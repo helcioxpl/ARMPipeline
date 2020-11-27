@@ -1,6 +1,7 @@
 library IEEE; use IEEE.STD_LOGIC_1164.all;
 entity controller is -- single cycle control decoder
   port(clk, reset:        in  STD_LOGIC;
+       Stall:             in  STD_LOGIC;
        Instr:             in  STD_LOGIC_VECTOR(31 downto 12);
        ALUFlags:          in  STD_LOGIC_VECTOR(3 downto 0);
        RegSrc:            out STD_LOGIC_VECTOR(1 downto 0);
@@ -10,7 +11,14 @@ entity controller is -- single cycle control decoder
        ALUControl:        out STD_LOGIC_VECTOR(1 downto 0);
        MemWrite:          out STD_LOGIC;
        MemtoReg:          out STD_LOGIC;
-       PCSrc:             out STD_LOGIC);
+       PCSrc:             out STD_LOGIC;
+
+       PCWrite            out STD_LOGIC;
+       IF_ID_Write        out STD_LOGIC;
+       ID_EX_Write        out STD_LOGIC;
+       ID_EX_Reset        out STD_LOGIC;
+       EX_MEM_Write       out STD_LOGIC;
+       MEM_WB_Write       out STD_LOGIC);
 end;
 
 architecture struct of controller is
@@ -35,6 +43,8 @@ architecture struct of controller is
   end component;
   signal FlagW: STD_LOGIC_VECTOR(1 downto 0);
   signal PCS, RegW, MemW: STD_LOGIC;
+
+  signal PCWrite_s, IF_ID_Write_s, ID_EX_Write_s: STD_LOGIC;
 begin
   dec: decoder port map(Instr(27 downto 26), Instr(25 downto 20),
                        Instr(15 downto 12), FlagW, PCS, 
@@ -42,7 +52,13 @@ begin
                        RegSrc, ALUControl);
   cl: condlogic port map(clk, reset, Instr(31 downto 28), 
                          ALUFlags, FlagW, PCS, RegW, MemW,
-                         PCSrc, RegWrite, MemWrite);                
+                         PCSrc, RegWrite, MemWrite);
+
+   ID_EX_Write <= ID_EX_Write_s;
+   ID_EX_Reset <= ID_EX_Write_s and Stall;
+
+   PCWrite <= PCWrite_s and not Stall;
+   IF_ID_Write <= IF_ID_Write_s and not Stall;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all;

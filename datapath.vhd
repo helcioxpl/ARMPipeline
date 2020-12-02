@@ -19,6 +19,103 @@ entity datapath is
 end;
 
 architecture struct of datapath is
+  component reg is -- three-port register file
+    port(clk, reset:   in  STD_LOGIC;
+       we:           in  STD_LOGIC;
+       D:            out STD_LOGIC_VECTOR(31 downto 0);
+       Q:            out STD_LOGIC_VECTOR(31 downto 0));
+  end component;
+  signal PCNext, PCPlus4, PCPlus8: STD_LOGIC_VECTOR(31 downto 0);
+  signal ExtImm, Result:           STD_LOGIC_VECTOR(31 downto 0);
+  signal SrcA, SrcB:               STD_LOGIC_VECTOR(31 downto 0);
+  signal RA1, RA2:                 STD_LOGIC_VECTOR(3 downto 0);
+begin
+  IF : entity work.IF(struct) port map(clk, reset, PCSrc, PC, Instr, Result);
+end;
+
+library IEEE; use IEEE.STD_LOGIC_1164.all; 
+entity IF is  
+  port(clk, reset:        in  STD_LOGIC;
+       PCSrc:             in  STD_LOGIC;
+       PCPlus4:           out STD_LOGIC_VECTOR(31 downto 0));
+       PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
+       Result:            in STD_LOGIC_VECTOR(31 downto 0);
+       Instr:             out  STD_LOGIC_VECTOR(31 downto 0));
+end;
+
+architecture struct of IF is
+  component flopr
+    generic(width: integer);
+    port(clk, reset: in  STD_LOGIC;
+         d:          in  STD_LOGIC_VECTOR(width-1 downto 0);
+         q:          out STD_LOGIC_VECTOR(width-1 downto 0));
+  end component;
+  component mux2
+    generic(width: integer);
+    port(d0, d1: in  STD_LOGIC_VECTOR(width-1 downto 0);
+         s:      in  STD_LOGIC;
+         y:      out STD_LOGIC_VECTOR(width-1 downto 0));
+  end component;
+  signal PCNext, PCPlus4, PCPlus8: STD_LOGIC_VECTOR(31 downto 0);
+begin
+  pcmux: mux2 generic map(32)
+              port map(PCPlus4, Result, PCSrc, PCNext);
+  pcreg: flopr generic map(32) port map(clk, reset, PCNext, PC);
+  pcadd1: entity adder.IF(behave) port map(PC, X"00000004", PCPlus4);
+end;
+
+library IEEE; use IEEE.STD_LOGIC_1164.all; 
+entity ID is  
+  port(clk, reset:        in  STD_LOGIC;
+       RegSrc:            in  STD_LOGIC_VECTOR(1 downto 0);
+       RegWrite:          in  STD_LOGIC;
+       ImmSrc:            in  STD_LOGIC_VECTOR(1 downto 0);
+       Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
+       Result:            in  STD_LOGIC_VECTOR(31 downto 0);
+       ExtImm:            out STD_LOGIC_VECTOR(31 downto 0);
+       PCPlus4:           in  STD_LOGIC_VECTOR(31 downto 0);
+       ALUResult:         buffer STD_LOGIC_VECTOR(31 downto 0);
+       WriteData:         buffer STD_LOGIC_VECTOR(31 downto 0));
+end;
+
+architecture struct of ID is
+  signal PCPlus8:  STD_LOGIC_VECTOR(31 downto 0);
+  signal RA1, RA2: STD_LOGIC_VECTOR(3 downto 0);
+begin
+  pcadd2: entity work.adder(behave) port map(PCPlus4, X"00000004", PCPlus8);
+  ra1mux: entity work.mux2(behave) generic map (4)
+    port map(Instr(19 downto 16), "1111", RegSrc(0), RA1);
+  ra2mux: entity work.mux2(behave)
+    generic map (4) port map(Instr(3 downto 0), 
+    Instr(15 downto 12), RegSrc(1), RA2);
+  rf: entity work.regfile(behave) port map(
+    clk, RegWrite, RA1, RA2, 
+    Instr(15 downto 12), Result, 
+    PCPlus8, SrcA, WriteData);
+  ext: entity work.extend(behave) port map(Instr(23 downto 0), ImmSrc, ExtImm);
+end;
+
+library IEEE; use IEEE.STD_LOGIC_1164.all; 
+entity datapath is  
+  port(clk, reset:        in  STD_LOGIC;
+       RegSrc:            in  STD_LOGIC_VECTOR(1 downto 0);
+       RegWrite:          in  STD_LOGIC;
+       ImmSrc:            in  STD_LOGIC_VECTOR(1 downto 0);
+       ALUSrc:            in  STD_LOGIC;
+       ALUControl:        in  STD_LOGIC_VECTOR(1 downto 0);
+       MemtoReg:          in  STD_LOGIC;
+       PCSrc:             in  STD_LOGIC;
+       ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
+       PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
+       Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
+       ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
+       ReadData:          in  STD_LOGIC_VECTOR(31 downto 0));
+
+       StageRegWrite      in STD_LOGIC_VECTOR(3 downto 0;
+       ID_EX_Reset        in STD_LOGIC);
+end;
+
+architecture struct of datapath is
   component alu
     port(a, b:       in  STD_LOGIC_VECTOR(31 downto 0);
          ALUControl: in  STD_LOGIC_VECTOR(1 downto 0);
@@ -79,42 +176,6 @@ begin
   srcbmux: mux2 generic map(32) 
     port map(WriteData, ExtImm, ALUSrc, SrcB);
   i_alu: alu port map(SrcA, SrcB, ALUControl, ALUResult, ALUFlags);
-end;
-
-library IEEE; use IEEE.STD_LOGIC_1164.all; 
-entity IF is  
-  port(clk, reset:        in  STD_LOGIC;
-       PCSrc:             in  STD_LOGIC;
-       PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
-       Instr:             out  STD_LOGIC_VECTOR(31 downto 0);
-       ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
-       Result :           in STD_LOGIC_VECTOR(31 downto 0));
-end;
-
-architecture struct of IF is
-  component adder
-    port(a, b: in  STD_LOGIC_VECTOR(31 downto 0);
-         y:    out STD_LOGIC_VECTOR(31 downto 0));
-  end component;
-  component flopr
-    generic(width: integer);
-    port(clk, reset: in  STD_LOGIC;
-         d:          in  STD_LOGIC_VECTOR(width-1 downto 0);
-         q:          out STD_LOGIC_VECTOR(width-1 downto 0));
-  end component;
-  component mux2
-    generic(width: integer);
-    port(d0, d1: in  STD_LOGIC_VECTOR(width-1 downto 0);
-         s:      in  STD_LOGIC;
-         y:      out STD_LOGIC_VECTOR(width-1 downto 0));
-  end component;
-  signal PCNext, PCPlus4, PCPlus8: STD_LOGIC_VECTOR(31 downto 0);
-begin
-  pcmux: mux2 generic map(32)
-              port map(PCPlus4, Result, PCSrc, PCNext);
-  pcreg: flopr generic map(32) port map(clk, reset, PCNext, PC);
-  pcadd1: adder port map(PC, X"00000004", PCPlus4);
-  pcadd2: adder port map(PCPlus4, X"00000004", PCPlus8);
 end;
 
 

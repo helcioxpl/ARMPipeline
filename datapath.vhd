@@ -73,6 +73,7 @@ entity ID is
        Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
        Result:            in  STD_LOGIC_VECTOR(31 downto 0);
        ExtImm:            out STD_LOGIC_VECTOR(31 downto 0);
+       SrcA:              out STD_LOGIC_VECTOR(31 downto 0);
        PCPlus4:           in  STD_LOGIC_VECTOR(31 downto 0);
        ALUResult:         buffer STD_LOGIC_VECTOR(31 downto 0);
        WriteData:         buffer STD_LOGIC_VECTOR(31 downto 0));
@@ -93,6 +94,25 @@ begin
     Instr(15 downto 12), Result, 
     PCPlus8, SrcA, WriteData);
   ext: entity work.extend(behave) port map(Instr(23 downto 0), ImmSrc, ExtImm);
+end;
+
+library IEEE; use IEEE.STD_LOGIC_1164.all; 
+entity EX is  
+  port(clk, reset:        in  STD_LOGIC;
+       ALUSrc:            in  STD_LOGIC;
+       ALUControl:        in  STD_LOGIC_VECTOR(1 downto 0);
+       ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
+       SrcA:              in STD_LOGIC_VECTOR(31 downto 0);
+       ExtImm:            in STD_LOGIC_VECTOR(31 downto 0);
+       ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0));
+end;
+
+architecture struct of EX is
+  signal SrcB: STD_LOGIC_VECTOR(31 downto 0);
+begin
+  srcbmux: mux2 generic map(32) 
+    port map(WriteData, ExtImm, ALUSrc, SrcB);
+  i_alu: alu port map(SrcA, SrcB, ALUControl, ALUResult, ALUFlags);
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 

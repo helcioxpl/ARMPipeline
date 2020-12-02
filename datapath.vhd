@@ -82,6 +82,44 @@ begin
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
+entity IF is  
+  port(clk, reset:        in  STD_LOGIC;
+       PCSrc:             in  STD_LOGIC;
+       PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
+       Instr:             out  STD_LOGIC_VECTOR(31 downto 0);
+       ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
+       Result :           in STD_LOGIC_VECTOR(31 downto 0));
+end;
+
+architecture struct of IF is
+  component adder
+    port(a, b: in  STD_LOGIC_VECTOR(31 downto 0);
+         y:    out STD_LOGIC_VECTOR(31 downto 0));
+  end component;
+  component flopr
+    generic(width: integer);
+    port(clk, reset: in  STD_LOGIC;
+         d:          in  STD_LOGIC_VECTOR(width-1 downto 0);
+         q:          out STD_LOGIC_VECTOR(width-1 downto 0));
+  end component;
+  component mux2
+    generic(width: integer);
+    port(d0, d1: in  STD_LOGIC_VECTOR(width-1 downto 0);
+         s:      in  STD_LOGIC;
+         y:      out STD_LOGIC_VECTOR(width-1 downto 0));
+  end component;
+  signal PCNext, PCPlus4, PCPlus8: STD_LOGIC_VECTOR(31 downto 0);
+begin
+  pcmux: mux2 generic map(32)
+              port map(PCPlus4, Result, PCSrc, PCNext);
+  pcreg: flopr generic map(32) port map(clk, reset, PCNext, PC);
+  pcadd1: adder port map(PC, X"00000004", PCPlus4);
+  pcadd2: adder port map(PCPlus4, X"00000004", PCPlus8);
+end;
+
+
+
+library IEEE; use IEEE.STD_LOGIC_1164.all; 
 use IEEE.NUMERIC_STD_UNSIGNED.all;
 entity reg is -- three-port register file
   port(clk, reset:   in  STD_LOGIC;

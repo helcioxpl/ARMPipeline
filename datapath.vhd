@@ -13,6 +13,9 @@ entity datapath is
        Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
        ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
        ReadData:          in  STD_LOGIC_VECTOR(31 downto 0));
+
+       StageRegWrite      in STD_LOGIC_VECTOR(3 downto 0;
+       ID_EX_Reset        in STD_LOGIC);
 end;
 
 architecture struct of datapath is
@@ -76,6 +79,29 @@ begin
   srcbmux: mux2 generic map(32) 
     port map(WriteData, ExtImm, ALUSrc, SrcB);
   i_alu: alu port map(SrcA, SrcB, ALUControl, ALUResult, ALUFlags);
+end;
+
+library IEEE; use IEEE.STD_LOGIC_1164.all; 
+use IEEE.NUMERIC_STD_UNSIGNED.all;
+entity reg is -- three-port register file
+  port(clk, reset:   in  STD_LOGIC;
+       we:           in  STD_LOGIC;
+       D:            out STD_LOGIC_VECTOR(31 downto 0);
+       Q:            out STD_LOGIC_VECTOR(31 downto 0));
+end;
+
+architecture behave of reg is
+  type regtype is STD_LOGIC_VECTOR(31 downto 0);
+  signal data: regtype;
+begin
+  process(clk) begin
+    if rising_edge(clk) then
+      if reset = '1' then data <= x"0000";
+      elsif we = '1' then data <= D;
+      end if;
+    end if;
+  end process;
+  Q <= data;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 

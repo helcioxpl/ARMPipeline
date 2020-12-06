@@ -30,58 +30,54 @@ architecture struct of datapath is
   signal SrcA, SrcB:               STD_LOGIC_VECTOR(31 downto 0);
   signal RA1, RA2:                 STD_LOGIC_VECTOR(3 downto 0);
 begin
-  IF : entity work.IF(struct) port map(clk, reset, PCSrc, PC, Instr, Result);
+  IF : entity work.IF(struct) port map(clk, reset, write, PCSrc, PC, Instr, PCPlus4, Result, Instr, InstrF);
+  ID : entity work.IF(struct) port map(clk, reset, PCSrc, PC, Instr, Result);
+  EX : entity work.IF(struct) port map(clk, reset, PCSrc, PC, Instr, Result);
+  MEM : entity work.IF(struct) port map(clk, reset, PCSrc, PC, Instr, Result);
+  WB : entity work.mux2(behave) generic map(32) port map(ALUResult, ReadData, MemtoReg, Result);
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 entity IF is  
-  port(clk, reset:        in  STD_LOGIC;
+  port(clk, reset, write: in  STD_LOGIC;
        PCSrc:             in  STD_LOGIC;
-       PCPlus4:           out STD_LOGIC_VECTOR(31 downto 0));
        PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
-       Result:            in STD_LOGIC_VECTOR(31 downto 0);
+       PCPlus4:           out STD_LOGIC_VECTOR(31 downto 0));
+       Result, InstrF:    in STD_LOGIC_VECTOR(31 downto 0);
        Instr:             out  STD_LOGIC_VECTOR(31 downto 0));
 end;
 
 architecture struct of IF is
-  component flopr
-    generic(width: integer);
-    port(clk, reset: in  STD_LOGIC;
-         d:          in  STD_LOGIC_VECTOR(width-1 downto 0);
-         q:          out STD_LOGIC_VECTOR(width-1 downto 0));
-  end component;
-  component mux2
-    generic(width: integer);
-    port(d0, d1: in  STD_LOGIC_VECTOR(width-1 downto 0);
-         s:      in  STD_LOGIC;
-         y:      out STD_LOGIC_VECTOR(width-1 downto 0));
-  end component;
-  signal PCNext, PCPlus4, PCPlus8: STD_LOGIC_VECTOR(31 downto 0);
+  signal PCNext, PCPlus4F: STD_LOGIC_VECTOR(31 downto 0);
 begin
-  pcmux: mux2 generic map(32)
-              port map(PCPlus4, Result, PCSrc, PCNext);
-  pcreg: flopr generic map(32) port map(clk, reset, PCNext, PC);
-  pcadd1: entity adder.IF(behave) port map(PC, X"00000004", PCPlus4);
+  pcmux: entity work.mux2(behave) generic map(32) port map(PCPlus4, Result, PCSrc, PCNext);
+  pcreg: entity work.flopr(asynchronous) generic map(32) port map(clk, reset, PCNext, PC);
+  pcadd1: entity work.adder(behave) port map(PC, X"00000004", PCPlus4F);
+
+  InstrReg: entity work.reg(behave) port map(clk, reset, write, InstrF, Instr);
+  PCPlus4Reg: entity work.reg(behave) port map(clk, reset, write, PCPlus4F, PCPlus4);
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 entity ID is  
-  port(clk, reset:        in  STD_LOGIC;
+  port(clk, reset, write: in  STD_LOGIC;
        RegSrc:            in  STD_LOGIC_VECTOR(1 downto 0);
        RegWrite:          in  STD_LOGIC;
+
        ImmSrc:            in  STD_LOGIC_VECTOR(1 downto 0);
+       PCPlus4:           in  STD_LOGIC_VECTOR(31 downto 0);
        Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
        Result:            in  STD_LOGIC_VECTOR(31 downto 0);
+
        ExtImm:            out STD_LOGIC_VECTOR(31 downto 0);
        SrcA:              out STD_LOGIC_VECTOR(31 downto 0);
-       PCPlus4:           in  STD_LOGIC_VECTOR(31 downto 0);
-       ALUResult:         buffer STD_LOGIC_VECTOR(31 downto 0);
        WriteData:         buffer STD_LOGIC_VECTOR(31 downto 0));
 end;
 
 architecture struct of ID is
-  signal PCPlus8:  STD_LOGIC_VECTOR(31 downto 0);
+  signal PCPlus8 : STD_LOGIC_VECTOR(31 downto 0);
   signal RA1, RA2: STD_LOGIC_VECTOR(3 downto 0);
+  signal RD1, RD2: STD_LOGIC_VECTOR(31 downto 0);
 begin
   pcadd2: entity work.adder(behave) port map(PCPlus4, X"00000004", PCPlus8);
   ra1mux: entity work.mux2(behave) generic map (4)
@@ -92,8 +88,12 @@ begin
   rf: entity work.regfile(behave) port map(
     clk, RegWrite, RA1, RA2, 
     Instr(15 downto 12), Result, 
-    PCPlus8, SrcA, WriteData);
-  ext: entity work.extend(behave) port map(Instr(23 downto 0), ImmSrc, ExtImm);
+    PCPlus8, RD1, RD2);
+  ext: entity work.extend(behave) port map(Instr(23 downto 0), ImmSrc, ExtImmD);
+
+  RD1Reg: entity work.reg(behave) port map(clk, reset, write, RD1, SrcA);
+  RD2Reg: entity work.reg(behave) port map(clk, reset, write, RD2, WriteData);
+  ExtImmReg: entity work.reg(behave) port map(clk, reset, write, ExtImmD, ExtImm);
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
@@ -116,102 +116,33 @@ begin
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
-entity datapath is  
-  port(clk, reset:        in  STD_LOGIC;
-       RegSrc:            in  STD_LOGIC_VECTOR(1 downto 0);
-       RegWrite:          in  STD_LOGIC;
-       ImmSrc:            in  STD_LOGIC_VECTOR(1 downto 0);
-       ALUSrc:            in  STD_LOGIC;
-       ALUControl:        in  STD_LOGIC_VECTOR(1 downto 0);
-       MemtoReg:          in  STD_LOGIC;
-       PCSrc:             in  STD_LOGIC;
-       ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
-       PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
-       Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
-       ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
-       ReadData:          in  STD_LOGIC_VECTOR(31 downto 0));
-
-       StageRegWrite      in STD_LOGIC_VECTOR(3 downto 0;
-       ID_EX_Reset        in STD_LOGIC);
+use IEEE.NUMERIC_STD_UNSIGNED.all;
+entity regbar is
+  generic(N: integer);
+  port(clk, reset, we:             in STD_LOGIC;
+       D:  in array (N-1 downto 0) of STD_LOGIC_VECTOR(31 downto 0);
+       Q: out array (N-1 downto 0) of STD_LOGIC_VECTOR(31 downto 0);
 end;
 
-architecture struct of datapath is
-  component alu
-    port(a, b:       in  STD_LOGIC_VECTOR(31 downto 0);
-         ALUControl: in  STD_LOGIC_VECTOR(1 downto 0);
-         Result:     buffer STD_LOGIC_VECTOR(31 downto 0);
-         ALUFlags:      out STD_LOGIC_VECTOR(3 downto 0));
-  end component;
-  component regfile
-    port(clk:           in  STD_LOGIC;
-         we3:           in  STD_LOGIC;
-         ra1, ra2, wa3: in  STD_LOGIC_VECTOR(3 downto 0);
-         wd3, r15:      in  STD_LOGIC_VECTOR(31 downto 0);
-         rd1, rd2:      out STD_LOGIC_VECTOR(31 downto 0));
-  end component;
-  component adder
-    port(a, b: in  STD_LOGIC_VECTOR(31 downto 0);
-         y:    out STD_LOGIC_VECTOR(31 downto 0));
-  end component;
-  component extend
-    port(Instr:  in  STD_LOGIC_VECTOR(23 downto 0);
-         ImmSrc: in  STD_LOGIC_VECTOR(1 downto 0);
-         ExtImm: out STD_LOGIC_VECTOR(31 downto 0));
-  end component;
-  component flopr generic(width: integer);
-    port(clk, reset: in  STD_LOGIC;
-         d:          in  STD_LOGIC_VECTOR(width-1 downto 0);
-         q:          out STD_LOGIC_VECTOR(width-1 downto 0));
-  end component;
-  component mux2 generic(width: integer);
-    port(d0, d1: in  STD_LOGIC_VECTOR(width-1 downto 0);
-         s:      in  STD_LOGIC;
-         y:      out STD_LOGIC_VECTOR(width-1 downto 0));
-  end component;
-  signal PCNext, PCPlus4, PCPlus8: STD_LOGIC_VECTOR(31 downto 0);
-  signal ExtImm, Result:           STD_LOGIC_VECTOR(31 downto 0);
-  signal SrcA, SrcB:               STD_LOGIC_VECTOR(31 downto 0);
-  signal RA1, RA2:                 STD_LOGIC_VECTOR(3 downto 0);
+architecture struct of regbar is
 begin
-  -- next PC logic
-  pcmux: mux2 generic map(32)
-              port map(PCPlus4, Result, PCSrc, PCNext);
-  pcreg: flopr generic map(32) port map(clk, reset, PCNext, PC);
-  pcadd1: adder port map(PC, X"00000004", PCPlus4);
-  pcadd2: adder port map(PCPlus4, X"00000004", PCPlus8);
-
-  -- register file logic
-  ra1mux: mux2 generic map (4)
-    port map(Instr(19 downto 16), "1111", RegSrc(0), RA1);
-  ra2mux: mux2 generic map (4) port map(Instr(3 downto 0), 
-             Instr(15 downto 12), RegSrc(1), RA2);
-  rf: regfile port map(clk, RegWrite, RA1, RA2, 
-                      Instr(15 downto 12), Result, 
-                      PCPlus8, SrcA, WriteData);
-  resmux: mux2 generic map(32) 
-    port map(ALUResult, ReadData, MemtoReg, Result);
-  ext: extend port map(Instr(23 downto 0), ImmSrc, ExtImm);
-
-  -- ALU logic
-  srcbmux: mux2 generic map(32) 
-    port map(WriteData, ExtImm, ALUSrc, SrcB);
-  i_alu: alu port map(SrcA, SrcB, ALUControl, ALUResult, ALUFlags);
+	REGS:
+	FOR I in 0 to N-1 generate
+    REGX: entity work.reg(struct) port map (clk, reset, we, D(I), Q(I));
+	end generate;
 end;
-
-
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 use IEEE.NUMERIC_STD_UNSIGNED.all;
-entity reg is -- three-port register file
+entity reg is
   port(clk, reset:   in  STD_LOGIC;
        we:           in  STD_LOGIC;
-       D:            out STD_LOGIC_VECTOR(31 downto 0);
+       D:            in STD_LOGIC_VECTOR(31 downto 0);
        Q:            out STD_LOGIC_VECTOR(31 downto 0));
 end;
 
-architecture behave of reg is
-  type regtype is STD_LOGIC_VECTOR(31 downto 0);
-  signal data: regtype;
+architecture struct of reg is
+  signal data: STD_LOGIC_VECTOR(31 downto 0);
 begin
   process(clk) begin
     if rising_edge(clk) then

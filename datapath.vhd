@@ -41,7 +41,7 @@ begin
     PCSrcE & RegWriteE & MemtoRegE & MemWriteE & ALUControlE & BranchE & ALUSrcE & FlagWriteE & WA3E);
 
   MEM : entity work.regbar(struct) generic map(1, 34) port map(clk, reset, StageWE(3),
-    ReadData & RegWriteM & MemtoRegM, ReadDataW & RegWriteW & MemtoRegW);
+    ReadData & RegWriteE & MemtoRegE, ReadDataM & RegWriteM & MemtoRegM);
   MEM_PTReg: entity work.regbar(struct) generic map(1, 8) port map(clk, reset, StageWE(3),
     PCSrcE & RegWriteE & MemtoRegE & MemWriteE & WA3E, PCSrcM & RegWriteM & MemtoRegM & MemWriteM & WA3M);
 

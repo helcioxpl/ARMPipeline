@@ -13,12 +13,12 @@ entity controller is -- single cycle control decoder
        MemtoReg:          out STD_LOGIC;
        PCSrc:             out STD_LOGIC;
 
-       PCWrite            out STD_LOGIC;
-       IF_ID_Write        out STD_LOGIC;
-       ID_EX_Write        out STD_LOGIC;
-       ID_EX_Reset        out STD_LOGIC;
-       EX_MEM_Write       out STD_LOGIC;
-       MEM_WB_Write       out STD_LOGIC);
+       PCWrite:            out STD_LOGIC;
+       IF_ID_Write:        out STD_LOGIC;
+       ID_EX_Write:        out STD_LOGIC;
+       ID_EX_Reset:        out STD_LOGIC;
+       EX_MEM_Write:       out STD_LOGIC;
+       MEM_WB_Write:       out STD_LOGIC);
 end;
 
 architecture struct of controller is

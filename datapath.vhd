@@ -32,20 +32,20 @@ architecture struct of datapath is
   signal ALUResultW, ReadDataW, ResultW: std_logic_vector(21 downto 0);
   signal WA3E, WA3M, WA3W: std_logic_vector(3 downto 0);
 begin
-  IF : entity work.IF_FD(struct) port map(clk, reset, StageWE(0), PCSrc, PC, PCPlus4, Result);
-  ID : entity work.ID_FD(struct) port map(clk, reset, FlushD, StageWE(1), RegSrc, RegWriteW, WA3W, ImmSrc, PCPlus4, Instr, ResultW, ExtImm, SrcA, WriteData);
+  i_IF : entity work.IF_FD(struct) port map(clk, reset, StageWE(0), PCSrc, PC, PCPlus4, Result);
+  i_ID : entity work.ID_FD(struct) port map(clk, reset, FlushD, StageWE(1), RegSrc, RegWriteW, WA3W, ImmSrc, PCPlus4, Instr, ResultW, ExtImm, SrcA, WriteData);
 
-  EX : entity work.EX_FD(struct) port map(clk, reset, FlushE, ALUSrcE, ALUControlE, ALUFlags, SrcA, ExtImm, ALUResult, WriteData);
+  i_EX : entity work.EX_FD(struct) port map(clk, reset, FlushE, ALUSrcE, ALUControlE, ALUFlags, SrcA, ExtImm, ALUResult, WriteData);
   EX_PTReg: entity work.regbar(struct) generic map(1, 13) port map(clk, reset, StageWE(2),
     PCSrc & RegWrite & MemtoReg & MemWrite & ALUControl & Branch & ALUSrc & FlagWrite & Instr(15 downto 12),
     PCSrcE & RegWriteE & MemtoRegE & MemWriteE & ALUControlE & BranchE & ALUSrcE & FlagWriteE & WA3E);
 
-  MEM : entity work.regbar(struct) generic map(1, 34) port map(clk, reset, StageWE(3),
+  i_MEM : entity work.regbar(struct) generic map(1, 34) port map(clk, reset, StageWE(3),
     ReadData & RegWriteE & MemtoRegE, ReadDataM & RegWriteM & MemtoRegM);
   MEM_PTReg: entity work.regbar(struct) generic map(1, 8) port map(clk, reset, StageWE(3),
     PCSrcE & RegWriteE & MemtoRegE & MemWriteE & WA3E, PCSrcM & RegWriteM & MemtoRegM & MemWriteM & WA3M);
 
-  WB : entity work.mux2(behave) generic map(32) port map(ALUResultW, ReadDataW, MemtoRegW, ResultW);
+  i_WB : entity work.mux2(behave) generic map(32) port map(ALUResultW, ReadDataW, MemtoRegW, ResultW);
   WB_PTReg: entity work.regbar(struct) generic map(1, 7) port map(clk, reset, StageWE(4),
     PCSrcM & RegWriteM & MemtoRegM & WA3M,    PCSrcW & RegWriteW & MemtoRegW & WA3W);
   WBReg : entity work.mux2(behave) generic map(2, 32) port map(clk, reset, StageWE(4),
@@ -57,7 +57,7 @@ entity IF_FD is
   port(clk, reset, write: in  STD_LOGIC;
        PCSrc:             in  STD_LOGIC;
        PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
-       PCPlus4:           buffer STD_LOGIC_VECTOR(31 downto 0));
+       PCPlus4:           buffer STD_LOGIC_VECTOR(31 downto 0);
        Result:            in STD_LOGIC_VECTOR(31 downto 0));
 end;
 
@@ -89,7 +89,6 @@ entity ID_FD is
 end;
 
 architecture struct of ID_FD is
-  signal PCPlus8 : STD_LOGIC_VECTOR(31 downto 0);
   signal RA1, RA2: STD_LOGIC_VECTOR(3 downto 0);
   signal InstrD  : STD_LOGIC_VECTOR(31 downto 0);
 begin
@@ -103,7 +102,7 @@ begin
   rf: entity work.regfile(behave) port map(
     clk, RegWrite, RA1, RA2, WA3,
     Result, PCPlus8D, SrcA, WriteData);
-  ext: entity work.extend(behave) port map(InstrD(23 downto 0), ImmSrc, ExtImmD);
+  ext: entity work.extend(behave) port map(InstrD(23 downto 0), ImmSrc, ExtImm);
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
@@ -118,30 +117,30 @@ entity EX_FD is
 end;
 
 architecture struct of EX_FD is
-  signal SrcB: STD_LOGIC_VECTOR(31 downto 0);
+  signal SrcAE, ScrBE, WriteDataE, ExtImmE : STD_LOGIC_VECTOR(31 downto 0);
 begin
   EXReg: entity work.regbar(struct) generic map(3, 32) port map(clk, clear, '1',
-    RD1 & RD2 & ExtImmD, SrcA & WriteData & ExtImm);
+    SrcA & WriteData & ExtImm, SrcAE & WriteDataE & ExtImmE);
 
-  srcbmux: mux2 generic map(32) 
-    port map(WriteData, ExtImm, ALUSrc, SrcB);
-  i_alu: alu port map(SrcA, SrcB, ALUControl, ALUResult, ALUFlags);
+  srcbmux: entity work.mux2(behave) generic map(32) 
+    port map(WriteDataE, ExtImmE, ALUSrc, SrcBE);
+  i_alu: entity work.alu(behave) port map(SrcAE, SrcBE, ALUControl, ALUResult, ALUFlags);
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 use IEEE.NUMERIC_STD_UNSIGNED.all;
 entity regbar is
-  generic(M: integer, N: integer);
+  generic(M, N: integer);
   port(clk, reset, we:             in STD_LOGIC;
-       D:  in array (N*M-1 downto 0) of STD_LOGIC_VECTOR(31 downto 0);
-       Q: out array (N*M-1 downto 0) of STD_LOGIC_VECTOR(31 downto 0);
+       D:  in  STD_LOGIC_VECTOR(N*M-1 downto 0);
+       Q:  out STD_LOGIC_VECTOR(N*M-1 downto 0));
 end;
 
 architecture struct of regbar is
 begin
 	REGS:
-	FOR I in 0 to N-1 generate
-    REGX: entity work.reg(struct) port map (clk, reset, we, D((I+1)*M-1 downto I*M), Q((I+1)*M-1 downto I*M);
+	FOR I in 0 to M-1 generate
+    REGX: entity work.reg(struct) port map (clk, reset, we, D((I+1)*N-1 downto I*N), Q((I+1)*N-1 downto I*N));
 	end generate;
 end;
 

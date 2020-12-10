@@ -42,6 +42,12 @@ begin
           or (WB and WBRegWrite)
           or DoubleStall
           or PCSrc;
+
+   ID_EX_Write <= ID_EX_Write_s;
+   ID_EX_Reset <= ID_EX_Write_s and Stall;
+
+   PCWrite <= PCWrite_s and not Stall;
+   IF_ID_Write <= IF_ID_Write_s and not Stall;
 end architecture;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all;

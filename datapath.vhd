@@ -3,10 +3,7 @@ entity datapath is
   port(clk, reset:           in  STD_LOGIC;
        controls:             in  STD_LOGIC_VECTOR(12 downto 0);
 
-       Branch:               out STD_LOGIC;
        MemWrite:             out STD_LOGIC;
-       FlagWrite:            out STD_LOGIC;
-  
        ALUFlags:             out STD_LOGIC_VECTOR(3 downto 0);
        PC:                   buffer STD_LOGIC_VECTOR(31 downto 0);
        Instr:                in  STD_LOGIC_VECTOR(31 downto 0);
@@ -22,7 +19,6 @@ architecture struct of datapath is
   signal WriteDataE, ALUResultE, ReadDataW: std_logic_vector(31 downto 0);
 
   signal controlsE:    std_logic_vector(13 downto 0);
-  signal controlsE_o:  std_logic_vector(10 downto 0);
   signal controlsM:    std_logic_vector(8 downto 0);
   signal controlsW:    std_logic_vector(7 downto 0);
 
@@ -40,16 +36,28 @@ begin
     RegSrc, RegWrite, ImmSrc, WA3,    PCPlus4, Instr, Result, ExtImm, SrcA, WriteData);
 
   (controlsE, RegSrc, ImmSrc) <= Instr(15 downto 12) & controls;
-  i_EX : entity work.EX_FD(struct) port map(clk, reset, FlushE, controlsE, controlsE_o,
+  i_EX : entity work.EX_FD(struct) port map(clk, reset, FlushE, controlsE, controlsM,
       ALUFlags, SrcA, ExtImm, ALUResult, WriteDataE);
 
-  (controlsM, Branch, FlagWrite) <= controlsE_o;
   MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, reset, StageWE(3),
     controlsM, controlsW & MemWrite,    WriteDataE & ALUResultE, WriteDataM & ALUResultM);
 
   WB_FD: entity work.mux2(behave) generic map(32) port map(ALUResultW, ReadDataW, MemtoReg, Result);
   WB: entity work.regbar(struct) generic map(7, 2) port map(clk, reset, StageWE(4),
     controlsW, WA3 & PCSrc & RegWrite & MemtoReg,    ALUResultM & ReadDataM, ALUResultW & ReadDataW);
+
+  HD: entity work.hazarddec(struct) port(
+    clock, reset,
+       MEMRegWrite       : in  STD_LOGIC;
+       ExRegWrite        : in  STD_LOGIC;
+       WBRegWrite        : in  STD_LOGIC;
+       ExRd, MemRd, WbRd : in  STD_LOGIC_VECTOR(4 downto 0);
+       ExRn,     IdRn    : in  STD_LOGIC_VECTOR(4 downto 0);
+       ExRm,     IdRm    : in  STD_LOGIC_VECTOR(4 downto 0);
+       ExMemRead         : in  STD_LOGIC;
+       PCSrc             : in  STD_LOGIC;
+       Stall             : out STD_LOGIC);
+end;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
@@ -66,7 +74,7 @@ architecture struct of IF_FD is
 begin
   pcmux: entity work.mux2(behave) generic map(32) port map(PCPlus4, Result, PCSrc, PCNext);
   pcreg: entity work.flopr(asynchronous) generic map(32) port map(clk, reset, PCNext, PCF);
-  IFReg: entity work.reg(behave) generic map(32) port map(clk, reset, write, PCF, PC);
+  IFReg: entity work.flopenr(asynchronous) generic map(32) port map(clk, reset, write, PCF, PC);
   pcadd1: entity work.adder(behave) port map(PC, X"00000004", PCPlus4);
 end;
 
@@ -90,7 +98,7 @@ architecture struct of ID_FD is
   signal RA1, RA2: STD_LOGIC_VECTOR(3 downto 0);
   signal InstrD  : STD_LOGIC_VECTOR(31 downto 0);
 begin
-  IDReg: entity work.reg(behave) generic map(32) port map(clk, IDRegClr, IDRegWE, Instr, InstrD);
+  IDReg: entity work.flopenr(asynchronous) generic map(32) port map(clk, IDRegClr, IDRegWE, Instr, InstrD);
 
   ra1mux: entity work.mux2(behave) generic map (4)
     port map(InstrD(19 downto 16), "1111", RegSrc(0), RA1);
@@ -106,8 +114,8 @@ end;
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 entity EX_FD is  
   port(clk, reset, clear: in  STD_LOGIC;
-       i_controls:        in  STD_LOGIC_VECTOR(13 downto 0);
-       o_controls:        in  STD_LOGIC_VECTOR(10 downto 0);
+       i_controls:        in  STD_LOGIC_VECTOR(10 downto 0);
+       o_controls:        in  STD_LOGIC_VECTOR(8 downto 0);
 
        ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
        SrcA:              in STD_LOGIC_VECTOR(31 downto 0);
@@ -116,17 +124,84 @@ entity EX_FD is
 end;
 
 architecture struct of EX_FD is
-  signal ALUSrc : STD_LOGIC;
+  signal s_controls : STD_LOGIC_VECTOR(8 downto 0);
   signal ALUControl : STD_LOGIC_VECTOR(1 downto 0);
+  signal ALUSrc, Branch, FlagWrite : STD_LOGIC;
   signal SrcAE, ScrBE, WriteDataE, ExtImmE : STD_LOGIC_VECTOR(31 downto 0);
 begin
-  Regs: entity work.regbar(struct) generic map(8, 3) port map(clk, reset, StageWE(2),
-    i_controls, o_controls & ALUControl & ALUSrc,
+  Regs: entity work.regbar(struct) generic map(10, 3) port map(clk, reset, StageWE(2),
+    i_controls, s_controls & Branch & FlagWrite & ALUControl & ALUSrc,
     SrcA & WriteData & ExtImm, SrcAE & WriteDataE & ExtImmE);
 
   srcbmux: entity work.mux2(behave) generic map(32) 
     port map(WriteDataE, ExtImmE, ALUSrc, SrcBE);
   i_alu: entity work.alu(behave) port map(SrcAE, SrcBE, ALUControl, ALUResult, ALUFlags);
+
+  cl: entity work.condlogic(behave) port map(
+    clk, reset, Instr(31 downto 28),
+    ALUFlags, FlagWrite, s_controls(9 downto 6), o_controls(9 downto 6));
+    o_controls(5 downto 0) <= s_controls(5 downto 0)
+end;
+library IEEE; use IEEE.STD_LOGIC_1164.all;
+entity condlogic is -- Conditional logic
+  port(clk, reset:       in  STD_LOGIC;
+       Cond:             in  STD_LOGIC_VECTOR(3 downto 0);
+       ALUFlags:         in  STD_LOGIC_VECTOR(3 downto 0);
+       FlagW:            in  STD_LOGIC_VECTOR(1 downto 0);
+       i_controls        in  STD_LOGIC_VECTOR(3 downto 0);
+       o_controls        out STD_LOGIC_VECTOR(3 downto 0));
+end;
+
+architecture behave of condlogic is
+  component flopenr
+    generic(width: integer);
+    port(clk, reset, en: in  STD_LOGIC;
+         d:          in  STD_LOGIC_VECTOR(width-1 downto 0);
+         q:          out STD_LOGIC_VECTOR(width-1 downto 0));
+  end component;
+  signal FlagWrite: STD_LOGIC_VECTOR(1 downto 0);
+  signal Flags:     STD_LOGIC_VECTOR(3 downto 0);
+  signal CondEx:    STD_LOGIC;
+begin
+  flagreg1: flopenr generic map(2)
+    port map(clk, reset, FlagWrite(1), 
+             ALUFlags(3 downto 2), Flags(3 downto 2));
+  flagreg0: flopenr generic map(2)
+    port map(clk, reset, FlagWrite(0), 
+             ALUFlags(1 downto 0), Flags(1 downto 0));
+  cc: entity work.condcheck(behave) port map(Cond, Flags, CondEx);
+  
+  FlagWrite <= FlagW and (CondEx, CondEx); 
+  o_controls <= i_controls and (CondEx, CondEx, '1', CondEx);
+end;
+
+library IEEE; use IEEE.STD_LOGIC_1164.all;
+entity condcheck is 
+  port(Cond:           in  STD_LOGIC_VECTOR(3 downto 0);
+       Flags:          in  STD_LOGIC_VECTOR(3 downto 0);
+       CondEx:         out STD_LOGIC);
+end;
+
+architecture behave of condcheck is
+  signal CondEx_s, neg, zero, carry, overflow, ge: STD_LOGIC;
+begin
+  (neg, zero, carry, overflow) <= Flags;
+  ge <= (neg xnor overflow);
+  
+  process(all) begin -- Condition checking
+    case Cond(3 downto 1) is
+      when "000" => CondEx_s <= zero;
+      when "001" => CondEx_s <= carry;
+      when "010" => CondEx_s <= neg;
+      when "011" => CondEx_s <= overflow;
+      when "100" => CondEx_s <= carry and (not zero);
+      when "101" => CondEx_s <= ge;
+      when "110" => CondEx_s <= (not zero) and ge;
+      when "111" => CondEx_s <= '1';
+      when others => CondEx_s <= '-';
+    end case;
+  end process;
+  CondEx <= CondEx_s xor Cond(0);
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
@@ -142,34 +217,11 @@ end;
 
 architecture struct of regbar is
 begin
-	UC: entity work.reg(struct) generic map(M) port map (clk, reset, we, D_UC, Q_UC);
+	UC: entity work.flopenr(asynchronous) generic map(M) port map (clk, reset, we, D_UC, Q_UC);
 	FD:
 	FOR I in 0 to N-1 generate
-    REGX: entity work.reg(struct) generic map(N) port map (clk, reset, we, D_FD(I*32+31 downto I*32), Q_FD(I*32+31 downto I*32);
+    REGX: entity work.flopenr(asynchronous) generic map(N) port map (clk, reset, we, D_FD(I*32+31 downto I*32), Q_FD(I*32+31 downto I*32);
 	end generate;
-end;
-
-library IEEE; use IEEE.STD_LOGIC_1164.all; 
-use IEEE.NUMERIC_STD_UNSIGNED.all;
-entity reg is
-  generic(N: integer);
-  port(clk, reset:   in  STD_LOGIC;
-       we:           in  STD_LOGIC;
-       D:            in STD_LOGIC_VECTOR(N-1 downto 0);
-       Q:            out STD_LOGIC_VECTOR(N-1 downto 0));
-end;
-
-architecture struct of reg is
-  signal data: STD_LOGIC_VECTOR(N-1 downto 0);
-begin
-  process(clk) begin
-    if rising_edge(clk) then
-      if reset = '1' then data <= std_logic_vector(to_unsigned(0, Q'length));
-      elsif we = '1' then data <= D;
-      end if;
-    end if;
-  end process;
-  Q <= data;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 

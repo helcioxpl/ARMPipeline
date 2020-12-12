@@ -1,60 +1,50 @@
 library IEEE; use IEEE.STD_LOGIC_1164.all;
 entity hazarddec is
   port(clock, reset      : in  STD_LOGIC;
-       MEMRegWrite       : in  STD_LOGIC;
-       ExRegWrite        : in  STD_LOGIC;
-       WBRegWrite        : in  STD_LOGIC;
-       ExRd, MemRd, WbRd : in  STD_LOGIC_VECTOR(4 downto 0);
-       ExRn,     IdRn    : in  STD_LOGIC_VECTOR(4 downto 0);
-       ExRm,     IdRm    : in  STD_LOGIC_VECTOR(4 downto 0);
+
        ExMemRead         : in  STD_LOGIC;
        PCSrc             : in  STD_LOGIC;
-       Stall             : out STD_LOGIC);
+
+       RA1D, RA2D       : in  STD_LOGIC_VECTOR(3 downto 0);
+       RA1E, RA2E       : in  STD_LOGIC_VECTOR(3 downto 0);
+       WA3E, WA3M, WA3W : in  STD_LOGIC_VECTOR(3 downto 0);
+       RWE, RWM, RWW    : in  STD_LOGIC_VECTOR(3 downto 0);
+
+       Flush, Stall     : out STD_LOGIC);
 end;
 architecture struct of hazarddec is
     component compReg is
     port(
         Rd, Rn, Rm : in  STD_LOGIC_VECTOR(4 downto 0);
-        N31 : in STD_LOGIC;
+        N31, EN : in STD_LOGIC;
         eq : out STD_LOGIC);
     end component;
     signal EX, MEM, WB : STD_LOGIC;
-    signal MEM31, WB31 : STD_LOGIC;
     signal DoubleStall : STD_LOGIC;
 begin
-    CompEX : compReg port map (ExRd, IdRn, IdRm, '0', EX);
-    CompMEM : compReg port map (MemRd, ExRn, ExRm, '1', MEM);
-    CompWB : compReg port map (WbRd, ExRn, ExRm, '1', WB);
+    CompE : compReg port map (WA3E, RA1D, RA1D, RWE, '0', EX);
+    CompM : compReg port map (WA3M, RA1E, RA2E, RWM, '1', MEM);
+    CompW : compReg port map (WA3W, RA1E, RA2E, RWW, '1', WB);
 
     process(clock, DoubleStall, MEMRegWrite, MEM)
     begin
         if (clock'event and clock='1') then
-            if (DoubleStall = '1') then
-                DoubleStall <= '0';
-            elsif (MEM = '1' and MEMRegWrite = '1') then
-                DoubleStall <= '1';
+            if (DoubleStall = '1') then DoubleStall <= '0';
+            elsif MEM = '1' then        DoubleStall <= '1';
+            else                        DoubleStall <= '0';
             end if;
         end if;
    end process;
 
-    Stall <= (EX and EXMemRead)
-          or(MEM and MEMRegWrite)
-          or (WB and WBRegWrite)
-          or DoubleStall
-          or PCSrc;
-
-   ID_EX_Write <= ID_EX_Write_s;
-   ID_EX_Reset <= ID_EX_Write_s and Stall;
-
-   PCWrite <= PCWrite_s and not Stall;
-   IF_ID_Write <= IF_ID_Write_s and not Stall;
+   Stall <= EX or MEM or WB or DoubleStall or PCSrc;
+   Flush <= Stall;
 end architecture;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all;
 entity compReg is
   port(
        Rd, Rn, Rm : in  STD_LOGIC_VECTOR(4 downto 0);
-       N31 : in STD_LOGIC;
+       N31, EN : in STD_LOGIC;
        eq : out STD_LOGIC);
 end;
 architecture struct of compReg is
@@ -68,7 +58,7 @@ begin
     CompA  : comp port map (Rd, Rn, a);
     CompB  : comp port map (Rd, Rm, b);
     Comp31 : comp port map (Rd, "11111", is31);
-    eq <= (a or b) and (N31 xor is31);
+    eq <= (a or b) and (N31 xor is31) and EN;
 end architecture;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all;

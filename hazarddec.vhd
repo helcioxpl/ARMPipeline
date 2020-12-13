@@ -23,14 +23,10 @@ architecture struct of hazarddec is
     signal RA1D, RA2D, RA1E, RA2E: STD_LOGIC_VECTOR(3 downto 0);
 begin
     (RA1D, RA2D) <= RAs;
-    Regs: entity work.flopenr(asynchronous) generic map(4)
-        port map (clk, Flush, '1', RA1D, RA1E);
-    Regs: entity work.flopenr(asynchronous) generic map(4)
-        port map (clk, Flush, '1', RA2D, RA2E);
-    
-    entity work.regbar(struct) generic map(21, 3) port map(clk, clear, '1',
-    Flags_i & i_controls & Instr, regquc,
-    SrcA & WriteData & ExtImm, regqfd);
+    Regs1: entity work.flopenr(asynchronous) generic map(4)
+        port map (clock, Flush, '1', RA1D, RA1E);
+    Regs2: entity work.flopenr(asynchronous) generic map(4)
+        port map (clock, Flush, '1', RA2D, RA2E);
 
     CompE : compReg port map (WA3E, RA1D, RA1D, RWE, '0', EX);
     CompM : compReg port map (WA3M, RA1E, RA2E, RWM, '1', MEM);

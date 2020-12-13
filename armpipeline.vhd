@@ -189,38 +189,28 @@ end;
 
 architecture struct of arm is
   component controller
-    port(clk, reset:        in  STD_LOGIC;
-         Instr:             in  STD_LOGIC_VECTOR(31 downto 12);
-         ALUFlags:          in  STD_LOGIC_VECTOR(3 downto 0);
-         controls:          out STD_LOGIC_VECTOR(13 downto 0);
-         Branch:            in  STD_LOGIC;
-         FlagWrite:         in  STD_LOGIC);
+    port(clk, reset:         in STD_LOGIC;
+         Instr:              in STD_LOGIC_VECTOR(31 downto 12);
+         controls:          out STD_LOGIC_VECTOR(13 downto 0));
   end component;
   component datapath
-    port(clk, reset:        in  STD_LOGIC;
-         controls:          in  STD_LOGIC_VECTOR(13 downto 0);
+    port(clk, reset:         in STD_LOGIC;
+         controls:           in STD_LOGIC_VECTOR(13 downto 0);
 
-         Branch:            out STD_LOGIC;
          MemWrite:          out STD_LOGIC;
-         FlagWrite:         out STD_LOGIC;
-
-         ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
-         PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
-         Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
-         ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
-         ReadData:          in  STD_LOGIC_VECTOR(31 downto 0));
+         Instr:              in STD_LOGIC_VECTOR(31 downto 0);
+         PC, ALUResultM: buffer STD_LOGIC_VECTOR(31 downto 0);
+         WriteDataM:     buffer STD_LOGIC_VECTOR(31 downto 0);
+         ReadDataM:          in STD_LOGIC_VECTOR(31 downto 0));
   end component;
-  signal Branch, FlagWrite: STD_LOGIC;
-  signal ALUFlags: STD_LOGIC_VECTOR(3 downto 0);
   signal controls: STD_LOGIC_VECTOR(13 downto 0);
 begin
   cont: controller port map(
     clk, reset, Instr(31 downto 12), 
     controls);
   dp: datapath port map(
-    clk, reset, controls, 
-    Branch, MemWrite, FlagWrite, 
-    ALUFlags, PC, Instr, ALUResult, 
+    clk, reset, controls,
+    MemWrite, Instr, PC, ALUResult, 
     WriteData, ReadData);
 end;
 
@@ -279,18 +269,14 @@ end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 entity datapath is  
-  port(clk, reset:           in  STD_LOGIC;
-       controls:             in  STD_LOGIC_VECTOR(13 downto 0);
+  port(clk, reset:            in STD_LOGIC;
+       controls:              in STD_LOGIC_VECTOR(13 downto 0);
 
        MemWrite:             out STD_LOGIC;
-       ALUFlags:             out STD_LOGIC_VECTOR(3 downto 0);
-       PC:                   buffer STD_LOGIC_VECTOR(31 downto 0);
-       Instr:                in  STD_LOGIC_VECTOR(31 downto 0);
-       ALUResultM, WriteDataM: buffer STD_LOGIC_VECTOR(31 downto 0);
-       ReadDataM:            in  STD_LOGIC_VECTOR(31 downto 0);
-
-       StageWE:              in STD_LOGIC_VECTOR(3 downto 0);
-       FlushE, FlushD:  in STD_LOGIC);
+       Instr:                 in STD_LOGIC_VECTOR(31 downto 0);
+       PC, ALUResultM:    buffer STD_LOGIC_VECTOR(31 downto 0);
+       WriteDataM:        buffer STD_LOGIC_VECTOR(31 downto 0);
+       ReadDataM:             in STD_LOGIC_VECTOR(31 downto 0));
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
@@ -309,7 +295,7 @@ begin
 	UC: entity work.flopenr(asynchronous) generic map(M) port map (clk, reset, we, D_UC, Q_UC);
 	FD:
 	FOR I in 0 to N-1 generate
-    REGX: entity work.flopenr(asynchronous) generic map(N) port map (clk, reset, we, D_FD(I*32+31 downto I*32), Q_FD(I*32+31 downto I*32));
+    REGX: entity work.flopenr(asynchronous) generic map(32) port map (clk, reset, we, D_FD(I*32+31 downto I*32), Q_FD(I*32+31 downto I*32));
 	end generate;
 end;
 
@@ -353,6 +339,7 @@ end;
 
 architecture struct of ID_FD is
   signal InstrD  : STD_LOGIC_VECTOR(31 downto 0);
+  signal s_RD1, s_RD2: std_logic_vector(31 downto 0);
 begin
   IDReg: entity work.flopenr(asynchronous) generic map(32) port map(clk, IDRegClr, IDRegWE, Instr, InstrD);
 
@@ -363,8 +350,11 @@ begin
     InstrD(15 downto 12), RegSrc(1), RA2);
   rf: entity work.regfile(behave) port map(
     clk, RegWrite, RA1, RA2, WA3,
-    Result, PCPlus8D, RD1, RD2);
+    Result, PCPlus8D, s_RD1, s_RD2);
   ext: entity work.extend(behave) port map(InstrD(23 downto 0), ImmSrc, ExtImm);
+
+  RD1 <= s_RD1;
+  RD2 <= s_RD2;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all;
@@ -413,7 +403,6 @@ entity EX_FD is
        Instr:             in  STD_LOGIC_VECTOR(31 downto 28);
 
        BranchTaken:       out STD_LOGIC;
-       ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
        SrcA:              in STD_LOGIC_VECTOR(31 downto 0);
        ExtImm:            in STD_LOGIC_VECTOR(31 downto 0);
        ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
@@ -423,6 +412,7 @@ end;
 architecture struct of EX_FD is
   signal s_controls : STD_LOGIC_VECTOR(8 downto 0);
   signal ALUControl, FlagWrite : STD_LOGIC_VECTOR(1 downto 0);
+  signal ALUFlags:           STD_LOGIC_VECTOR(3 downto 0);
   signal ALUSrc: STD_LOGIC;
   signal ocontrol:  std_logic_vector(7 downto 0);
   signal Cond, Flags_i, Flags_o : STD_LOGIC_VECTOR(3 downto 0);
@@ -430,7 +420,7 @@ architecture struct of EX_FD is
   signal regquc: std_logic_vector(21 downto 0);
   signal regqfd: std_logic_vector(95 downto 0);
 begin
-  Regs: entity work.regbar(struct) generic map(21, 3) port map(clk, clear, '1',
+  Regs: entity work.regbar(struct) generic map(22, 3) port map(clk, clear, '1',
     Flags_i & i_controls & Instr, regquc,
     SrcA & WriteData & ExtImm, regqfd);
 
@@ -467,7 +457,7 @@ architecture struct of datapath is
   signal wbquc: std_logic_vector(6 downto 0);
   signal wbqfd: std_logic_vector(63 downto 0);
 
-  signal Flush, Stall, WE: std_logic;
+  signal Flush, Stall, WE: std_logic := '0';
   -- signal PC_WE, ID_WE, WB_WE: std_logic;
   -- signal FlushD, FlushE, FlushM: std_logic;
 begin
@@ -479,22 +469,22 @@ begin
 
   i_IF : entity work.IF_FD(struct) port map(clk, reset, WE, PCSrc, PC, PCPlus4, BranchTaken, Result, ALUResultE);
   i_ID : entity work.ID_FD(struct) port map(clk, reset, WE, Flush,
-    RegSrc, RegWrite, ImmSrc, WA3W, PCPlus4, Instr, Result, ExtImm, SrcA, WriteData);
+    RegSrc, RegWrite, ImmSrc, WA3W, PCPlus4, Instr, Result, ExtImm, SrcA, WriteData, RA1E, RA2E);
 
   (controlsE, RegSrc, ImmSrc) <= controls;
   i_EX : entity work.EX_FD(struct) port map(clk, reset, Flush,
     Instr(15 downto 12) & controlsE, WA3E & controlsM,
-    Instr(31 downto 28), BranchTaken, ALUFlags, SrcA,
+    Instr(31 downto 28), BranchTaken, SrcA,
     ExtImm, ALUResultE, WriteDataE, RA1E, RA2E);
 
-  MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, Flush, '1',
+  MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, reset or Flush, '1',
     WA3E & controlsM, memquc, WriteDataE & ALUResultE, memqfd);
 
   memquc <= WA3M & controlsW & MemWrite;
   memqfd <= WriteDataM & ALUResultM;
 
   WB_FD: entity work.mux2(behave) generic map(32) port map(ALUResultW, ReadDataW, MemtoReg, Result);
-  WB: entity work.regbar(struct) generic map(7, 2) port map(clk, reset, WE,
+  WB: entity work.regbar(struct) generic map(7, 2) port map(clk, reset or Flush, WE,
     WA3M & controlsW, wbquc, ALUResultM & ReadDataM, wbqfd);
 
   wbquc <= WA3W & PCSrc & RegWrite & MemtoReg;
@@ -502,7 +492,7 @@ begin
   WE <= not Stall;
   HD: entity work.hazarddec(struct) port map(
     clk, reset, controlsE(9), PCSrc,
-    SrcA & WriteData,
+    RA1E & RA2E,
     WA3E, WA3M, WA3W,
     controlsE(8), controlsM(3), controlsW(2),
     Flush, Stall);
@@ -707,15 +697,15 @@ architecture struct of hazarddec is
         N15, EN : in STD_LOGIC;
         eq : out STD_LOGIC);
     end component;
-    signal EX, MEM, WB : STD_LOGIC;
-    signal DoubleStall : STD_LOGIC;
+    signal EX, MEM, WB : STD_LOGIC := '0';
+    signal DoubleStall : STD_LOGIC := '0';
     signal RA1D, RA2D, RA1E, RA2E: STD_LOGIC_VECTOR(3 downto 0);
 begin
     (RA1D, RA2D) <= RAs;
     Regs1: entity work.flopenr(asynchronous) generic map(4)
-        port map (clock, Flush, '1', RA1D, RA1E);
+        port map (clock, reset or Flush, '1', RA1D, RA1E);
     Regs2: entity work.flopenr(asynchronous) generic map(4)
-        port map (clock, Flush, '1', RA2D, RA2E);
+        port map (clock, reset or Flush, '1', RA2D, RA2E);
 
     CompE : compReg port map (WA3E, RA1D, RA1D, RWE, '0', EX);
     CompM : compReg port map (WA3M, RA1E, RA2E, RWM, '1', MEM);

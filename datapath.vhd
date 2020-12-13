@@ -26,7 +26,7 @@ begin
 	UC: entity work.flopenr(asynchronous) generic map(M) port map (clk, reset, we, D_UC, Q_UC);
 	FD:
 	FOR I in 0 to N-1 generate
-    REGX: entity work.flopenr(asynchronous) generic map(N) port map (clk, reset, we, D_FD(I*32+31 downto I*32), Q_FD(I*32+31 downto I*32));
+    REGX: entity work.flopenr(asynchronous) generic map(32) port map (clk, reset, we, D_FD(I*32+31 downto I*32), Q_FD(I*32+31 downto I*32));
 	end generate;
 end;
 
@@ -70,6 +70,7 @@ end;
 
 architecture struct of ID_FD is
   signal InstrD  : STD_LOGIC_VECTOR(31 downto 0);
+  signal s_RD1, s_RD2: std_logic_vector(31 downto 0);
 begin
   IDReg: entity work.flopenr(asynchronous) generic map(32) port map(clk, IDRegClr, IDRegWE, Instr, InstrD);
 
@@ -80,8 +81,11 @@ begin
     InstrD(15 downto 12), RegSrc(1), RA2);
   rf: entity work.regfile(behave) port map(
     clk, RegWrite, RA1, RA2, WA3,
-    Result, PCPlus8D, RD1, RD2);
+    Result, PCPlus8D, s_RD1, s_RD2);
   ext: entity work.extend(behave) port map(InstrD(23 downto 0), ImmSrc, ExtImm);
+
+  RD1 <= s_RD1;
+  RD2 <= s_RD2;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all;
@@ -130,7 +134,6 @@ entity EX_FD is
        Instr:             in  STD_LOGIC_VECTOR(31 downto 28);
 
        BranchTaken:       out STD_LOGIC;
-       ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
        SrcA:              in STD_LOGIC_VECTOR(31 downto 0);
        ExtImm:            in STD_LOGIC_VECTOR(31 downto 0);
        ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
@@ -140,6 +143,7 @@ end;
 architecture struct of EX_FD is
   signal s_controls : STD_LOGIC_VECTOR(8 downto 0);
   signal ALUControl, FlagWrite : STD_LOGIC_VECTOR(1 downto 0);
+  signal ALUFlags:           STD_LOGIC_VECTOR(3 downto 0);
   signal ALUSrc: STD_LOGIC;
   signal ocontrol:  std_logic_vector(7 downto 0);
   signal Cond, Flags_i, Flags_o : STD_LOGIC_VECTOR(3 downto 0);
@@ -147,7 +151,7 @@ architecture struct of EX_FD is
   signal regquc: std_logic_vector(21 downto 0);
   signal regqfd: std_logic_vector(95 downto 0);
 begin
-  Regs: entity work.regbar(struct) generic map(21, 3) port map(clk, clear, '1',
+  Regs: entity work.regbar(struct) generic map(22, 3) port map(clk, clear, '1',
     Flags_i & i_controls & Instr, regquc,
     SrcA & WriteData & ExtImm, regqfd);
 
@@ -196,12 +200,12 @@ begin
 
   i_IF : entity work.IF_FD(struct) port map(clk, reset, WE, PCSrc, PC, PCPlus4, BranchTaken, Result, ALUResultE);
   i_ID : entity work.ID_FD(struct) port map(clk, reset, WE, Flush,
-    RegSrc, RegWrite, ImmSrc, WA3W, PCPlus4, Instr, Result, ExtImm, SrcA, WriteData);
+    RegSrc, RegWrite, ImmSrc, WA3W, PCPlus4, Instr, Result, ExtImm, SrcA, WriteData, RA1E, RA2E);
 
   (controlsE, RegSrc, ImmSrc) <= controls;
   i_EX : entity work.EX_FD(struct) port map(clk, reset, Flush,
     Instr(15 downto 12) & controlsE, WA3E & controlsM,
-    Instr(31 downto 28), BranchTaken, ALUFlags, SrcA,
+    Instr(31 downto 28), BranchTaken, SrcA,
     ExtImm, ALUResultE, WriteDataE, RA1E, RA2E);
 
   MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, Flush, '1',
@@ -219,7 +223,7 @@ begin
   WE <= not Stall;
   HD: entity work.hazarddec(struct) port map(
     clk, reset, controlsE(9), PCSrc,
-    SrcA & WriteData,
+    RA1E & RA2E,
     WA3E, WA3M, WA3W,
     controlsE(8), controlsM(3), controlsW(2),
     Flush, Stall);

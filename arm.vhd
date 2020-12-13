@@ -191,11 +191,11 @@ architecture struct of arm is
   component controller
     port(clk, reset:         in STD_LOGIC;
          Instr:              in STD_LOGIC_VECTOR(31 downto 12);
-         controls:          out STD_LOGIC_VECTOR(12 downto 0));
+         controls:          out STD_LOGIC_VECTOR(13 downto 0));
   end component;
   component datapath
     port(clk, reset:         in STD_LOGIC;
-         controls:           in STD_LOGIC_VECTOR(12 downto 0);
+         controls:           in STD_LOGIC_VECTOR(13 downto 0);
 
          MemWrite:          out STD_LOGIC;
          Instr:              in STD_LOGIC_VECTOR(31 downto 0);
@@ -203,11 +203,11 @@ architecture struct of arm is
          WriteDataM:     buffer STD_LOGIC_VECTOR(31 downto 0);
          ReadDataM:          in STD_LOGIC_VECTOR(31 downto 0));
   end component;
-  signal controls: STD_LOGIC_VECTOR(12 downto 0);
+  signal controls: STD_LOGIC_VECTOR(13 downto 0);
 begin
   cont: controller port map(
     clk, reset, Instr(31 downto 12), 
-    ALUFlags, controls, Branch, FlagWrite);
+    controls);
   dp: datapath port map(
     clk, reset, controls,
     MemWrite, Instr, PC, ALUResult, 

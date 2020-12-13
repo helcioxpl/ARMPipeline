@@ -18,15 +18,15 @@ architecture struct of hazarddec is
         N15, EN : in STD_LOGIC;
         eq : out STD_LOGIC);
     end component;
-    signal EX, MEM, WB : STD_LOGIC;
-    signal DoubleStall : STD_LOGIC;
+    signal EX, MEM, WB : STD_LOGIC := '0';
+    signal DoubleStall : STD_LOGIC := '0';
     signal RA1D, RA2D, RA1E, RA2E: STD_LOGIC_VECTOR(3 downto 0);
 begin
     (RA1D, RA2D) <= RAs;
     Regs1: entity work.flopenr(asynchronous) generic map(4)
-        port map (clock, Flush, '1', RA1D, RA1E);
+        port map (clock, reset or Flush, '1', RA1D, RA1E);
     Regs2: entity work.flopenr(asynchronous) generic map(4)
-        port map (clock, Flush, '1', RA2D, RA2E);
+        port map (clock, reset or Flush, '1', RA2D, RA2E);
 
     CompE : compReg port map (WA3E, RA1D, RA1D, RWE, '0', EX);
     CompM : compReg port map (WA3M, RA1E, RA2E, RWM, '1', MEM);

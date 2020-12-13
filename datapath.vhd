@@ -1,17 +1,13 @@
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 entity datapath is  
-  port(clk, reset:           in  STD_LOGIC;
-       controls:             in  STD_LOGIC_VECTOR(13 downto 0);
+  port(clk, reset:            in STD_LOGIC;
+       controls:              in STD_LOGIC_VECTOR(13 downto 0);
 
        MemWrite:             out STD_LOGIC;
-       ALUFlags:             out STD_LOGIC_VECTOR(3 downto 0);
-       PC:                   buffer STD_LOGIC_VECTOR(31 downto 0);
-       Instr:                in  STD_LOGIC_VECTOR(31 downto 0);
-       ALUResultM, WriteDataM: buffer STD_LOGIC_VECTOR(31 downto 0);
-       ReadDataM:            in  STD_LOGIC_VECTOR(31 downto 0);
-
-       StageWE:              in STD_LOGIC_VECTOR(3 downto 0);
-       FlushE, FlushD:  in STD_LOGIC);
+       Instr:                 in STD_LOGIC_VECTOR(31 downto 0);
+       PC, ALUResultM:    buffer STD_LOGIC_VECTOR(31 downto 0);
+       WriteDataM:        buffer STD_LOGIC_VECTOR(31 downto 0);
+       ReadDataM:             in STD_LOGIC_VECTOR(31 downto 0));
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 

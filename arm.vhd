@@ -189,37 +189,27 @@ end;
 
 architecture struct of arm is
   component controller
-    port(clk, reset:        in  STD_LOGIC;
-         Instr:             in  STD_LOGIC_VECTOR(31 downto 12);
-         ALUFlags:          in  STD_LOGIC_VECTOR(3 downto 0);
-         controls:          out STD_LOGIC_VECTOR(12 downto 0);
-         Branch:            in  STD_LOGIC;
-         FlagWrite:         in  STD_LOGIC);
+    port(clk, reset:         in STD_LOGIC;
+         Instr:              in STD_LOGIC_VECTOR(31 downto 12);
+         controls:          out STD_LOGIC_VECTOR(12 downto 0));
   end component;
   component datapath
-    port(clk, reset:        in  STD_LOGIC;
-         controls:          in  STD_LOGIC_VECTOR(12 downto 0);
+    port(clk, reset:         in STD_LOGIC;
+         controls:           in STD_LOGIC_VECTOR(12 downto 0);
 
-         Branch:            out STD_LOGIC;
          MemWrite:          out STD_LOGIC;
-         FlagWrite:         out STD_LOGIC;
-
-         ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
-         PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
-         Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
-         ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
-         ReadData:          in  STD_LOGIC_VECTOR(31 downto 0));
+         Instr:              in STD_LOGIC_VECTOR(31 downto 0);
+         PC, ALUResultM: buffer STD_LOGIC_VECTOR(31 downto 0);
+         WriteDataM:     buffer STD_LOGIC_VECTOR(31 downto 0);
+         ReadDataM:          in STD_LOGIC_VECTOR(31 downto 0));
   end component;
-  signal Branch, FlagWrite: STD_LOGIC;
-  signal ALUFlags: STD_LOGIC_VECTOR(3 downto 0);
   signal controls: STD_LOGIC_VECTOR(12 downto 0);
 begin
   cont: controller port map(
     clk, reset, Instr(31 downto 12), 
     ALUFlags, controls, Branch, FlagWrite);
   dp: datapath port map(
-    clk, reset, controls, 
-    Branch, MemWrite, FlagWrite, 
-    ALUFlags, PC, Instr, ALUResult, 
+    clk, reset, controls,
+    MemWrite, Instr, PC, ALUResult, 
     WriteData, ReadData);
 end;

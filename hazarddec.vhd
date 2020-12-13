@@ -5,8 +5,7 @@ entity hazarddec is
        ExMemRead         : in  STD_LOGIC;
        PCSrc             : in  STD_LOGIC;
 
-       RA1D, RA2D       : in  STD_LOGIC_VECTOR(3 downto 0);
-       RA1E, RA2E       : in  STD_LOGIC_VECTOR(3 downto 0);
+       RAs              : in  STD_LOGIC_VECTOR(7 downto 0);
        WA3E, WA3M, WA3W : in  STD_LOGIC_VECTOR(3 downto 0);
        RWE, RWM, RWW    : in  STD_LOGIC;
 
@@ -21,7 +20,18 @@ architecture struct of hazarddec is
     end component;
     signal EX, MEM, WB : STD_LOGIC;
     signal DoubleStall : STD_LOGIC;
+    signal RA1D, RA2D, RA1E, RA2E: STD_LOGIC_VECTOR(3 downto 0);
 begin
+    (RA1D, RA2D) <= RAs;
+    Regs: entity work.flopenr(asynchronous) generic map(4)
+        port map (clk, Flush, '1', RA1D, RA1E);
+    Regs: entity work.flopenr(asynchronous) generic map(4)
+        port map (clk, Flush, '1', RA2D, RA2E);
+    
+    entity work.regbar(struct) generic map(21, 3) port map(clk, clear, '1',
+    Flags_i & i_controls & Instr, regquc,
+    SrcA & WriteData & ExtImm, regqfd);
+
     CompE : compReg port map (WA3E, RA1D, RA1D, RWE, '0', EX);
     CompM : compReg port map (WA3M, RA1E, RA2E, RWM, '1', MEM);
     CompW : compReg port map (WA3W, RA1E, RA2E, RWW, '1', WB);

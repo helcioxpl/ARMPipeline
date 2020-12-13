@@ -1,7 +1,7 @@
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 entity datapath is  
   port(clk, reset:           in  STD_LOGIC;
-       controls:             in  STD_LOGIC_VECTOR(12 downto 0);
+       controls:             in  STD_LOGIC_VECTOR(13 downto 0);
 
        MemWrite:             out STD_LOGIC;
        ALUFlags:             out STD_LOGIC_VECTOR(3 downto 0);
@@ -14,58 +14,29 @@ entity datapath is
        FlushE, FlushD:  in STD_LOGIC);
 end;
 
-architecture struct of datapath is
-  signal PCPlus4, ExtImm, SrcA, Result:     STD_LOGIC_VECTOR(31 downto 0);
-  signal WriteDataE, ALUResultE, ReadDataW: std_logic_vector(31 downto 0);
-
-  signal controlsE:    std_logic_vector(9 downto 0);
-  signal controlsM:    std_logic_vector(3 downto 0);
-  signal controlsW:    std_logic_vector(2 downto 0);
-
-  signal PCSrc, RegWrite, MemtoReg: std_logic;
-  signal WA3E, WA3M, WA3W : in  STD_LOGIC_VECTOR(3 downto 0);
-  signal RA1E, RA2E       : in  STD_LOGIC_VECTOR(3 downto 0);
-
-  signal Flush, Stall, WE: std_logic;
-  -- signal PC_WE, ID_WE, WB_WE: std_logic;
-  -- signal FlushD, FlushE, FlushM: std_logic;
-begin
-  -- controls order:
-  -- WB:  WA3 & PCSrc(IF) & RegWrite & MemtoReg
-  -- MEM: MemWrite
-  -- EX:  Branch & FlagWrite & ALUControl & ALUSrc
-  -- ID:  RegSrc & ImmSrc
-
-  i_IF : entity work.IF_FD(struct) port map(clk, reset, WE, PCSrc, PC, PCPlus4, BranchTaken, Result, ALUResultE);
-  i_ID : entity work.ID_FD(struct) port map(clk, reset, WE, Flush,
-    RegSrc, RegWrite, ImmSrc, WA3W,    PCPlus4, Instr, Result, ExtImm, SrcA, WriteData);
-
-  (controlsE, RegSrc, ImmSrc) <=  & controls;
-  i_EX : entity work.EX_FD(struct) port map(clk, reset, Flush,
-    Instr(15 downto 12) & controlsE, WA3E & controlsM,
-    Instr(31 downto 28), BranchTaken, ALUFlags, SrcA,
-    ExtImm, ALUResultE, WriteDataE, RA1E, RA2E);
-
-  MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, Flush, '1',
-    WA3E & controlsM, WA3M & controlsW & MemWrite,    WriteDataE & ALUResultE, WriteDataM & ALUResultM);
-
-  WB_FD: entity work.mux2(behave) generic map(32) port map(ALUResultW, ReadDataW, MemtoReg, Result);
-  WB: entity work.regbar(struct) generic map(7, 2) port map(clk, reset, WE,
-    WA3M & controlsW, WA3W & PCSrc & RegWrite & MemtoReg,    ALUResultM & ReadDataM, ALUResultW & ReadDataW);
-
-  WE <= not Stall;
-  HD: entity work.hazarddec(struct) port(
-    clock, reset, controlsE(9), PCSrc,
-    SrcA, WriteData, RA1E, RA2E,
-    WA3E, WA3M, WA3W,
-    controlsE(8), controlsM(3), controlsW(2),
-    Flush, Stall);
+library IEEE; use IEEE.STD_LOGIC_1164.all; 
+use IEEE.NUMERIC_STD_UNSIGNED.all;
+entity regbar is
+  generic(M, N: integer);
+  port(clk, reset, we:             in STD_LOGIC;
+       D_UC:  in  STD_LOGIC_VECTOR(M-1 downto 0);
+       Q_UC:  out STD_LOGIC_VECTOR(M-1 downto 0);
+       D_FD:  in  STD_LOGIC_VECTOR(N*32-1 downto 0);
+       Q_FD:  out STD_LOGIC_VECTOR(N*32-1 downto 0));
 end;
+
+architecture struct of regbar is
+begin
+	UC: entity work.flopenr(asynchronous) generic map(M) port map (clk, reset, we, D_UC, Q_UC);
+	FD:
+	FOR I in 0 to N-1 generate
+    REGX: entity work.flopenr(asynchronous) generic map(N) port map (clk, reset, we, D_FD(I*32+31 downto I*32), Q_FD(I*32+31 downto I*32));
+	end generate;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 
 entity IF_FD is  
-  port(clk, reset, write: in  STD_LOGIC;
+  port(clk, reset, writ:  in  STD_LOGIC;
        PCSrc:             in  STD_LOGIC;
        PC:                buffer STD_LOGIC_VECTOR(31 downto 0);
        PCPlus4:           buffer STD_LOGIC_VECTOR(31 downto 0);
@@ -80,7 +51,7 @@ begin
   pcmux1: entity work.mux2(behave) generic map(32) port map(PCPlus4, Result, PCSrc, PCProv);
   pcmux2: entity work.mux2(behave) generic map(32) port map(PCProv, ALUResult, BranchTaken, PCNext);
 
-  PCReg: entity work.flopenr(asynchronous) generic map(32) port map(clk, reset, write, PCNext, PC);
+  PCReg: entity work.flopenr(asynchronous) generic map(32) port map(clk, reset, writ, PCNext, PC);
   pcadd1: entity work.adder(behave) port map(PC, X"00000004", PCPlus4);
 end;
 
@@ -97,7 +68,7 @@ entity ID_FD is
        Instr:             in  STD_LOGIC_VECTOR(31 downto 0);
        Result:            in  STD_LOGIC_VECTOR(31 downto 0);
 
-       ExtImm, RD1, RD2:  out STD_LOGIC_VECTOR(31 downto 0),
+       ExtImm, RD1, RD2:  out STD_LOGIC_VECTOR(31 downto 0);
        RA1, RA2:       buffer STD_LOGIC_VECTOR(3 downto 0));
 end;
 
@@ -117,41 +88,6 @@ begin
   ext: entity work.extend(behave) port map(InstrD(23 downto 0), ImmSrc, ExtImm);
 end;
 
-library IEEE; use IEEE.STD_LOGIC_1164.all; 
-entity EX_FD is  
-  port(clk, reset, clear: in  STD_LOGIC;
-       i_controls:        in  STD_LOGIC_VECTOR(13 downto 0);
-       o_controls:        in  STD_LOGIC_VECTOR(7 downto 0);
-       Instr:             in  STD_LOGIC_VECTOR(31 downto 28);
-
-       BranchTaken:       out STD_LOGIC;
-       ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
-       SrcA:              in STD_LOGIC_VECTOR(31 downto 0);
-       ExtImm:            in STD_LOGIC_VECTOR(31 downto 0);
-       ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0));
-end;
-
-architecture struct of EX_FD is
-  signal s_controls : STD_LOGIC_VECTOR(8 downto 0);
-  signal ALUControl, FlagWrite : STD_LOGIC_VECTOR(1 downto 0);
-  signal ALUSrc: STD_LOGIC;
-  signal Cond, Flags_i, Flags_o : STD_LOGIC_VECTOR(3 downto 0);
-  signal SrcAE, ScrBE, WriteDataE, ExtImmE : STD_LOGIC_VECTOR(31 downto 0);
-begin
-  Regs: entity work.regbar(struct) generic map(21, 3) port map(clk, clear, '1',
-    Flags_i & i_controls & Instr, Flags_o & s_controls & FlagWrite & ALUControl & ALUSrc & Cond,
-    SrcA & WriteData & ExtImm, SrcAE & WriteDataE & ExtImmE);
-
-  srcbmux: entity work.mux2(behave) generic map(32) 
-    port map(WriteDataE, ExtImmE, ALUSrc, SrcBE);
-  i_alu: entity work.alu(behave) port map(SrcAE, SrcBE, ALUControl, ALUResult, ALUFlags);
-
-  cl: entity work.condlogic(behave) port map(
-    clk, reset, Cond, ALUFlags, FlagWrite, BranchTaken, Flags_i, Flags_o
-    s_controls(4 downto 0), o_controls(3 downto 0));
-    o_controls(7 downto 4) <= s_controls(8 downto 5);
-end;
-
 library IEEE; use IEEE.STD_LOGIC_1164.all;
 entity condlogic is -- Conditional logic
   port(clk, reset:       in  STD_LOGIC;
@@ -159,10 +95,10 @@ entity condlogic is -- Conditional logic
        ALUFlags:         in  STD_LOGIC_VECTOR(3 downto 0);
        FlagW:            in  STD_LOGIC_VECTOR(1 downto 0);
        BranchTaken:      buffer STD_LOGIC;
-       Flags_i           in  STD_LOGIC_VECTOR(3 downto 0);
-       Flags_o           out STD_LOGIC_VECTOR(3 downto 0);
-       i_controls        in  STD_LOGIC_VECTOR(4 downto 0);
-       o_controls        out STD_LOGIC_VECTOR(3 downto 0));
+       Flags_i:           in  STD_LOGIC_VECTOR(3 downto 0);
+       Flags_o:           out STD_LOGIC_VECTOR(3 downto 0);
+       i_controls:        in  STD_LOGIC_VECTOR(4 downto 0);
+       o_controls:        out STD_LOGIC_VECTOR(3 downto 0));
 end;
 
 architecture behave of condlogic is
@@ -187,7 +123,111 @@ begin
   
   FlagWrite <= FlagW and (CondEx, CondEx); 
   (s_controls, BranchTaken) <= i_controls and (CondEx, '1', CondEx, CondEx, CondEx);
-  o_controls <= s_controls or (BranchTaken & "0000");
+  o_controls <= s_controls or (BranchTaken & "000");
+end;
+
+library IEEE; use IEEE.STD_LOGIC_1164.all; 
+entity EX_FD is  
+  port(clk, reset, clear: in  STD_LOGIC;
+       i_controls:        in  STD_LOGIC_VECTOR(13 downto 0);
+       o_controls:        in  STD_LOGIC_VECTOR(7 downto 0);
+       Instr:             in  STD_LOGIC_VECTOR(31 downto 28);
+
+       BranchTaken:       out STD_LOGIC;
+       ALUFlags:          out STD_LOGIC_VECTOR(3 downto 0);
+       SrcA:              in STD_LOGIC_VECTOR(31 downto 0);
+       ExtImm:            in STD_LOGIC_VECTOR(31 downto 0);
+       ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0);
+       RA1, RA2:          buffer STD_LOGIC_VECTOR(3 downto 0));
+end;
+
+architecture struct of EX_FD is
+  signal s_controls : STD_LOGIC_VECTOR(8 downto 0);
+  signal ALUControl, FlagWrite : STD_LOGIC_VECTOR(1 downto 0);
+  signal ALUSrc: STD_LOGIC;
+  signal ocontrol:  std_logic_vector(7 downto 0);
+  signal Cond, Flags_i, Flags_o : STD_LOGIC_VECTOR(3 downto 0);
+  signal SrcAE, SrcBE, WriteDataE, ExtImmE : STD_LOGIC_VECTOR(31 downto 0);
+  signal regquc: std_logic_vector(21 downto 0);
+  signal regqfd: std_logic_vector(95 downto 0);
+begin
+  Regs: entity work.regbar(struct) generic map(21, 3) port map(clk, clear, '1',
+    Flags_i & i_controls & Instr, regquc,
+    SrcA & WriteData & ExtImm, regqfd);
+
+  srcbmux: entity work.mux2(behave) generic map(32) 
+    port map(WriteDataE, ExtImmE, ALUSrc, SrcBE);
+  i_alu: entity work.alu(behave) port map(SrcAE, SrcBE, ALUControl, ALUResult, ALUFlags);
+
+  cl: entity work.condlogic(behave) port map(
+    clk, reset, Cond, ALUFlags, FlagWrite, BranchTaken, Flags_i, Flags_o,
+    s_controls(4 downto 0), ocontrol(3 downto 0));
+  
+  ocontrol(7 downto 4) <= s_controls(8 downto 5);
+  regquc <= Flags_o & s_controls & FlagWrite & ALUControl & ALUSrc & Cond;
+  regqfd <= SrcAE & WriteDataE & ExtImmE;
+  ocontrol <= o_controls;
+end;
+
+architecture struct of datapath is
+  signal PCPlus4, ExtImm, SrcA, Result:     STD_LOGIC_VECTOR(31 downto 0);
+  signal WriteDataE, ALUResultE, ALUResultW, ReadDataW, WriteData: std_logic_vector(31 downto 0);
+  signal RegSrc, ImmSrc: std_logic_vector(1 downto 0);
+
+  signal controlsE:    std_logic_vector(9 downto 0);
+  signal controlsM:    std_logic_vector(3 downto 0);
+  signal controlsW:    std_logic_vector(2 downto 0);
+
+  signal PCSrc, RegWrite, MemtoReg, BranchTaken: std_logic;
+  signal WA3E, WA3M, WA3W : STD_LOGIC_VECTOR(3 downto 0);
+  signal RA1E, RA2E       : STD_LOGIC_VECTOR(3 downto 0);
+
+  signal memquc: std_logic_vector(7 downto 0);
+  signal memqfd: std_logic_vector(63 downto 0);
+
+  signal wbquc: std_logic_vector(6 downto 0);
+  signal wbqfd: std_logic_vector(63 downto 0);
+
+  signal Flush, Stall, WE: std_logic;
+  -- signal PC_WE, ID_WE, WB_WE: std_logic;
+  -- signal FlushD, FlushE, FlushM: std_logic;
+begin
+  -- controls order:
+  -- WB:  WA3 & PCSrc(IF) & RegWrite & MemtoReg
+  -- MEM: MemWrite
+  -- EX:  Branch & FlagWrite & ALUControl & ALUSrc
+  -- ID:  RegSrc & ImmSrc
+
+  i_IF : entity work.IF_FD(struct) port map(clk, reset, WE, PCSrc, PC, PCPlus4, BranchTaken, Result, ALUResultE);
+  i_ID : entity work.ID_FD(struct) port map(clk, reset, WE, Flush,
+    RegSrc, RegWrite, ImmSrc, WA3W, PCPlus4, Instr, Result, ExtImm, SrcA, WriteData);
+
+  (controlsE, RegSrc, ImmSrc) <= controls;
+  i_EX : entity work.EX_FD(struct) port map(clk, reset, Flush,
+    Instr(15 downto 12) & controlsE, WA3E & controlsM,
+    Instr(31 downto 28), BranchTaken, ALUFlags, SrcA,
+    ExtImm, ALUResultE, WriteDataE, RA1E, RA2E);
+
+  MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, Flush, '1',
+    WA3E & controlsM, memquc, WriteDataE & ALUResultE, memqfd);
+
+  memquc <= WA3M & controlsW & MemWrite;
+  memqfd <= WriteDataM & ALUResultM;
+
+  WB_FD: entity work.mux2(behave) generic map(32) port map(ALUResultW, ReadDataW, MemtoReg, Result);
+  WB: entity work.regbar(struct) generic map(7, 2) port map(clk, reset, WE,
+    WA3M & controlsW, wbquc, ALUResultM & ReadDataM, wbqfd);
+
+  wbquc <= WA3W & PCSrc & RegWrite & MemtoReg;
+  wbqfd <= ALUResultW & ReadDataW;
+  WE <= not Stall;
+  HD: entity work.hazarddec(struct) port map(
+    clk, reset, controlsE(9), PCSrc,
+    SrcA, WriteData, RA1E, RA2E,
+    WA3E, WA3M, WA3W,
+    controlsE(8), controlsM(3), controlsW(2),
+    Flush, Stall);
+end;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all;
@@ -217,26 +257,6 @@ begin
     end case;
   end process;
   CondEx <= CondEx_s xor Cond(0);
-end;
-
-library IEEE; use IEEE.STD_LOGIC_1164.all; 
-use IEEE.NUMERIC_STD_UNSIGNED.all;
-entity regbar is
-  generic(M, N: integer);
-  port(clk, reset, we:             in STD_LOGIC;
-       D_UC:  in  STD_LOGIC_VECTOR(M-1 downto 0);
-       Q_UC:  out STD_LOGIC_VECTOR(M-1 downto 0);
-       D_FD:  in  STD_LOGIC_VECTOR(N*32-1 downto 0);
-       Q_FD:  out STD_LOGIC_VECTOR(N*32-1 downto 0));
-end;
-
-architecture struct of regbar is
-begin
-	UC: entity work.flopenr(asynchronous) generic map(M) port map (clk, reset, we, D_UC, Q_UC);
-	FD:
-	FOR I in 0 to N-1 generate
-    REGX: entity work.flopenr(asynchronous) generic map(N) port map (clk, reset, we, D_FD(I*32+31 downto I*32), Q_FD(I*32+31 downto I*32);
-	end generate;
 end;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all; 

@@ -212,6 +212,7 @@ architecture struct of arm is
   end component;
   signal Branch, FlagWrite: STD_LOGIC;
   signal ALUFlags: STD_LOGIC_VECTOR(3 downto 0);
+  signal controls: STD_LOGIC_VECTOR(12 downto 0);
 begin
   cont: controller port map(
     clk, reset, Instr(31 downto 12), 

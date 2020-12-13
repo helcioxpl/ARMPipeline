@@ -2,15 +2,16 @@ library IEEE; use IEEE.STD_LOGIC_1164.all;
 entity controller is -- single cycle control decoder
   port(clk, reset:        in  STD_LOGIC;
        Instr:             in  STD_LOGIC_VECTOR(31 downto 12);
-       controls:          out STD_LOGIC_VECTOR(12 downto 0));
+       controls:          out STD_LOGIC_VECTOR(13 downto 0));
 end;
 
 architecture struct of controller is
   signal PCS, RegW, MemW: STD_LOGIC;
   signal control_s:  STD_LOGIC_VECTOR(9 downto 0);
-  signal op2:        STD_LOGIC_VECTOR(3 downto 0);
-  signal FlagW:      STD_LOGIC_VECTOR(1 downto 0);
+  signal op2, Rd:        STD_LOGIC_VECTOR(3 downto 0);
+  signal FlagW, Op:      STD_LOGIC_VECTOR(1 downto 0);
   signal ALUControl: STD_LOGIC_VECTOR(1 downto 0);
+  signal Funct: STD_LOGIC_VECTOR(5 downto 0);
 begin
   (Op, Funct) <= Instr(27 downto 20);
   op2 <= (Op, Funct(5), Funct(0));
@@ -29,7 +30,7 @@ begin
   end process;
 
   --     (((and Rd) and RegW) or Branch)
-  PCS <= (((and Rd) and control_s(0)) or control_s(4);
+  PCS <= (((and Rd) and control_s(0)) or control_s(4));
   controls <= PCS & control_s(9 downto 6) & FlagW & ALUControl & control_s(5 downto 1);
 
   process(all) begin -- ALU Decoder

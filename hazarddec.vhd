@@ -8,15 +8,15 @@ entity hazarddec is
        RA1D, RA2D       : in  STD_LOGIC_VECTOR(3 downto 0);
        RA1E, RA2E       : in  STD_LOGIC_VECTOR(3 downto 0);
        WA3E, WA3M, WA3W : in  STD_LOGIC_VECTOR(3 downto 0);
-       RWE, RWM, RWW    : in  STD_LOGIC_VECTOR(3 downto 0);
+       RWE, RWM, RWW    : in  STD_LOGIC;
 
        Flush, Stall     : out STD_LOGIC);
 end;
 architecture struct of hazarddec is
     component compReg is
     port(
-        Rd, Rn, Rm : in  STD_LOGIC_VECTOR(4 downto 0);
-        N31, EN : in STD_LOGIC;
+        Rd, Rn, Rm : in  STD_LOGIC_VECTOR(3 downto 0);
+        N15, EN : in STD_LOGIC;
         eq : out STD_LOGIC);
     end component;
     signal EX, MEM, WB : STD_LOGIC;
@@ -26,7 +26,7 @@ begin
     CompM : compReg port map (WA3M, RA1E, RA2E, RWM, '1', MEM);
     CompW : compReg port map (WA3W, RA1E, RA2E, RWW, '1', WB);
 
-    process(clock, DoubleStall, MEMRegWrite, MEM)
+    process(clock, DoubleStall, MEM)
     begin
         if (clock'event and clock='1') then
             if (DoubleStall = '1') then DoubleStall <= '0';
@@ -43,37 +43,37 @@ end architecture;
 library IEEE; use IEEE.STD_LOGIC_1164.all;
 entity compReg is
   port(
-       Rd, Rn, Rm : in  STD_LOGIC_VECTOR(4 downto 0);
-       N31, EN : in STD_LOGIC;
+       Rd, Rn, Rm : in  STD_LOGIC_VECTOR(3 downto 0);
+       EN, N15 : in STD_LOGIC;
        eq : out STD_LOGIC);
 end;
 architecture struct of compReg is
     component comp is
     port(
-        a, b : in  STD_LOGIC_VECTOR(4 downto 0);
+        a, b : in  STD_LOGIC_VECTOR(3 downto 0);
         eq: out STD_LOGIC);
     end component;
-    signal a, b, is31 : STD_LOGIC;
+    signal a, b, is15 : STD_LOGIC;
 begin
     CompA  : comp port map (Rd, Rn, a);
     CompB  : comp port map (Rd, Rm, b);
-    Comp31 : comp port map (Rd, "11111", is31);
-    eq <= (a or b) and (N31 xor is31) and EN;
+    Comp15 : comp port map (Rd, "1111", is15);
+    eq <= (a or b) and (N15 xor is15) and EN;
 end architecture;
 
 library IEEE; use IEEE.STD_LOGIC_1164.all;
 entity comp is
   port(
-    a, b : in  STD_LOGIC_VECTOR(4 downto 0);
+    a, b : in  STD_LOGIC_VECTOR(3 downto 0);
     eq: out STD_LOGIC);
 end;
 architecture struct of comp is
-    signal eqv : STD_LOGIC_VECTOR(4 downto 0);
+    signal eqv : STD_LOGIC_VECTOR(3 downto 0);
 begin
 	CompBits:
-	FOR I in 0 to 4 generate
+	FOR I in 0 to 3 generate
         eqv(I) <= a(I) xnor b(I);
 	end generate;
-    eq <= eqv(0) and eqv(1) and eqv(2) and eqv(3) and eqv(4);
+    eq <= eqv(0) and eqv(1) and eqv(2) and eqv(3);
 end architecture;
 

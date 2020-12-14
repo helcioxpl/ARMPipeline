@@ -401,7 +401,8 @@ entity EX_FD is
        BranchTaken:       out STD_LOGIC;
        SrcA:              in STD_LOGIC_VECTOR(31 downto 0);
        ExtImm:            in STD_LOGIC_VECTOR(31 downto 0);
-       ALUResult, WriteData: buffer STD_LOGIC_VECTOR(31 downto 0));
+       WriteData:         in STD_LOGIC_VECTOR(31 downto 0);
+       ALUResult, WriteDataE: buffer STD_LOGIC_VECTOR(31 downto 0));
 end;
 
 architecture struct of EX_FD is
@@ -411,7 +412,7 @@ architecture struct of EX_FD is
   signal ALUSrc: STD_LOGIC;
   signal ocontrol:  std_logic_vector(7 downto 0);
   signal Cond, Flags_i, Flags_o : STD_LOGIC_VECTOR(3 downto 0);
-  signal SrcAE, SrcBE, WriteDataE, ExtImmE : STD_LOGIC_VECTOR(31 downto 0);
+  signal SrcAE, SrcBE, ExtImmE : STD_LOGIC_VECTOR(31 downto 0);
   signal regquc: std_logic_vector(21 downto 0);
   signal regqfd: std_logic_vector(95 downto 0);
 begin
@@ -469,7 +470,7 @@ begin
   i_EX : entity work.EX_FD(struct) port map(clk, reset, clear,
     Instr(15 downto 12) & controlsE, o_control,
     Instr(31 downto 28), BranchTaken, SrcA,
-    ExtImm, ALUResultE, WriteDataE);
+    ExtImm, WriteData, ALUResultE, WriteDataE);
 
   MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, clear, '1',
     o_control, memquc, WriteDataE & ALUResultE, memqfd);

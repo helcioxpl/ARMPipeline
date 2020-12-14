@@ -457,7 +457,7 @@ architecture struct of datapath is
   signal wbquc: std_logic_vector(6 downto 0);
   signal wbqfd: std_logic_vector(63 downto 0);
 
-  signal Flush, Stall, WE: std_logic := '0';
+  signal Flush, Stall, WE, clear: std_logic;
   -- signal PC_WE, ID_WE, WB_WE: std_logic;
   -- signal FlushD, FlushE, FlushM: std_logic;
 begin
@@ -468,28 +468,30 @@ begin
   -- ID:  RegSrc & ImmSrc
 
   i_IF : entity work.IF_FD(struct) port map(clk, reset, WE, PCSrc, PC, PCPlus4, BranchTaken, Result, ALUResultE);
-  i_ID : entity work.ID_FD(struct) port map(clk, reset, WE, Flush,
+  i_ID : entity work.ID_FD(struct) port map(clk, reset, WE, clear,
     RegSrc, RegWrite, ImmSrc, WA3W, PCPlus4, Instr, Result, ExtImm, SrcA, WriteData, RA1E, RA2E);
 
   (controlsE, RegSrc, ImmSrc) <= controls;
-  i_EX : entity work.EX_FD(struct) port map(clk, reset, Flush,
+  i_EX : entity work.EX_FD(struct) port map(clk, reset, clear,
     Instr(15 downto 12) & controlsE, WA3E & controlsM,
     Instr(31 downto 28), BranchTaken, SrcA,
     ExtImm, ALUResultE, WriteDataE, RA1E, RA2E);
 
-  MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, reset or Flush, '1',
+  MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, clear, '1',
     WA3E & controlsM, memquc, WriteDataE & ALUResultE, memqfd);
 
   memquc <= WA3M & controlsW & MemWrite;
   memqfd <= WriteDataM & ALUResultM;
 
   WB_FD: entity work.mux2(behave) generic map(32) port map(ALUResultW, ReadDataW, MemtoReg, Result);
-  WB: entity work.regbar(struct) generic map(7, 2) port map(clk, reset or Flush, WE,
+  WB: entity work.regbar(struct) generic map(7, 2) port map(clk, clear, WE,
     WA3M & controlsW, wbquc, ALUResultM & ReadDataM, wbqfd);
 
   wbquc <= WA3W & PCSrc & RegWrite & MemtoReg;
   wbqfd <= ALUResultW & ReadDataW;
+
   WE <= not Stall;
+  clear <= reset or Flush;
   HD: entity work.hazarddec(struct) port map(
     clk, reset, controlsE(9), PCSrc,
     RA1E & RA2E,
@@ -688,7 +690,7 @@ entity hazarddec is
        WA3E, WA3M, WA3W : in  STD_LOGIC_VECTOR(3 downto 0);
        RWE, RWM, RWW    : in  STD_LOGIC;
 
-       Flush, Stall     : out STD_LOGIC);
+       Flush, Stall     : out STD_LOGIC := 0);
 end;
 architecture struct of hazarddec is
     component compReg is
@@ -699,7 +701,7 @@ architecture struct of hazarddec is
     end component;
     signal EX, MEM, WB : STD_LOGIC := '0';
     signal DoubleStall : STD_LOGIC := '0';
-    signal RA1D, RA2D, RA1E, RA2E: STD_LOGIC_VECTOR(3 downto 0);
+    signal RA1D, RA2D, RA1E, RA2E: STD_LOGIC_VECTOR(3 downto 0) := x"0";
 begin
     (RA1D, RA2D) <= RAs;
     Regs1: entity work.flopenr(asynchronous) generic map(4)

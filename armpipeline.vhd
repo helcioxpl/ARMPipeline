@@ -399,7 +399,7 @@ library IEEE; use IEEE.STD_LOGIC_1164.all;
 entity EX_FD is  
   port(clk, reset, clear: in  STD_LOGIC;
        i_controls:        in  STD_LOGIC_VECTOR(13 downto 0);
-       o_controls:        in  STD_LOGIC_VECTOR(7 downto 0);
+       o_controls:        out  STD_LOGIC_VECTOR(7 downto 0);
        Instr:             in  STD_LOGIC_VECTOR(31 downto 28);
 
        BranchTaken:       out STD_LOGIC;
@@ -433,9 +433,9 @@ begin
     s_controls(4 downto 0), ocontrol(3 downto 0));
   
   ocontrol(7 downto 4) <= s_controls(8 downto 5);
-  regquc <= Flags_o & s_controls & FlagWrite & ALUControl & ALUSrc & Cond;
-  regqfd <= SrcAE & WriteDataE & ExtImmE;
-  ocontrol <= o_controls;
+  (Flags_o, s_controls, FlagWrite, ALUControl, ALUSrc, Cond) <= regquc;
+  (SrcAE, WriteDataE, ExtImmE) <= regqfd;
+  o_controls <= ocontrol;
 end;
 
 architecture struct of datapath is
@@ -457,6 +457,8 @@ architecture struct of datapath is
   signal wbquc: std_logic_vector(6 downto 0);
   signal wbqfd: std_logic_vector(63 downto 0);
 
+  signal o_control: std_logic_vector(7 downto 0);
+
   signal Flush, Stall, WE, clear: std_logic;
   -- signal PC_WE, ID_WE, WB_WE: std_logic;
   -- signal FlushD, FlushE, FlushM: std_logic;
@@ -473,22 +475,24 @@ begin
 
   (controlsE, RegSrc, ImmSrc) <= controls;
   i_EX : entity work.EX_FD(struct) port map(clk, reset, clear,
-    Instr(15 downto 12) & controlsE, WA3E & controlsM,
+    Instr(15 downto 12) & controlsE, o_control,
     Instr(31 downto 28), BranchTaken, SrcA,
     ExtImm, ALUResultE, WriteDataE, RA1E, RA2E);
 
   MEM: entity work.regbar(struct) generic map(8, 2) port map(clk, clear, '1',
-    WA3E & controlsM, memquc, WriteDataE & ALUResultE, memqfd);
+    o_control, memquc, WriteDataE & ALUResultE, memqfd);
 
-  memquc <= WA3M & controlsW & MemWrite;
-  memqfd <= WriteDataM & ALUResultM;
+  (WA3E, controlsM) <= o_control;
+
+  (WA3M, controlsW, MemWrite) <= memquc;
+  (WriteDataM, ALUResultM) <= memqfd;
 
   WB_FD: entity work.mux2(behave) generic map(32) port map(ALUResultW, ReadDataW, MemtoReg, Result);
   WB: entity work.regbar(struct) generic map(7, 2) port map(clk, clear, WE,
     WA3M & controlsW, wbquc, ALUResultM & ReadDataM, wbqfd);
 
-  wbquc <= WA3W & PCSrc & RegWrite & MemtoReg;
-  wbqfd <= ALUResultW & ReadDataW;
+  (WA3W, PCSrc, RegWrite, MemtoReg) <= wbquc;
+  (ALUResultW, ReadDataW) <= wbqfd;
 
   WE <= not Stall;
   clear <= reset or Flush;
@@ -690,7 +694,7 @@ entity hazarddec is
        WA3E, WA3M, WA3W : in  STD_LOGIC_VECTOR(3 downto 0);
        RWE, RWM, RWW    : in  STD_LOGIC;
 
-       Flush, Stall     : out STD_LOGIC := 0);
+       Flush, Stall     : out STD_LOGIC := '0');
 end;
 architecture struct of hazarddec is
     component compReg is
